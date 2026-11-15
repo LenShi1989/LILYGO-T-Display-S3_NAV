@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>T-Display-S3 NAV</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">NAV</div>
+        <div>
+          <div class="brand-name">T-Display-S3</div>
+          <div class="brand-sub">導航控制台</div>
+        </div>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="status">
+          <span class="ico">◧</span>系統狀態
+        </button>
+        <button class="tab" data-tab="wifi">
+          <span class="ico">≋</span>WiFi 設定
+        </button>
+        <button class="tab" data-tab="nav">
+          <span class="ico">➤</span>MAP 導航
+        </button>
+        <button class="tab" data-tab="ota">
+          <span class="ico">⇧</span>OTA 更新
+        </button>
+      </nav>
+
+      <div class="side-foot">
+        <div id="sideState" class="pill">連線中…</div>
+        <div id="sideIp" class="mini">—</div>
+        <div class="mini"><a href="http://nav.local">nav.local</a></div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <!-- ================= 系統狀態 ================= -->
+      <section id="tab-status" class="panel active">
+        <header class="page-head">
+          <h1>系統狀態</h1>
+          <div class="head-actions">
+            <span id="statusTime" class="mini"></span>
+            <button id="btnRefresh" class="btn ghost">重新整理</button>
+          </div>
+        </header>
+
+        <div class="cards">
+          <article class="card">
+            <h2>WiFi 連線</h2>
+            <dl class="kv">
+              <dt>狀態</dt>
+              <dd id="sWifiState">—</dd>
+              <dt>SSID</dt>
+              <dd id="sSsid">—</dd>
+              <dt>IP</dt>
+              <dd id="sIp">—</dd>
+              <dt>訊號</dt>
+              <dd id="sRssi">—</dd>
+              <dt>頻道</dt>
+              <dd id="sChannel">—</dd>
+              <dt>MAC</dt>
+              <dd id="sMac" class="mono">—</dd>
+              <dt>mDNS</dt>
+              <dd id="sHost" class="mono">—</dd>
+            </dl>
+          </article>
+
+          <article class="card">
+            <h2>電池</h2>
+            <div class="battery">
+              <div class="battery-body">
+                <div id="batFill" class="battery-fill"></div>
+              </div>
+              <div class="battery-tip"></div>
+              <span id="batPct" class="battery-pct">—</span>
+            </div>
+            <div id="batVolt" class="mini">—</div>
+            <div id="batNote" class="mini warn"></div>
+          </article>
+
+          <article class="card">
+            <h2>記憶體</h2>
+            <dl class="kv">
+              <dt>可用 Heap</dt>
+              <dd id="sHeap">—</dd>
+              <dt>最小 Heap</dt>
+              <dd id="sHeapMin">—</dd>
+              <dt>PSRAM</dt>
+              <dd id="sPsram">—</dd>
+              <dt>Flash</dt>
+              <dd id="sFlash">—</dd>
+              <dt>晶片</dt>
+              <dd id="sChip">—</dd>
+              <dt>CPU</dt>
+              <dd id="sCpu">—</dd>
+            </dl>
+          </article>
+
+          <article class="card">
+            <h2>韌體</h2>
+            <dl class="kv">
+              <dt>名稱</dt>
+              <dd id="sFwName">—</dd>
+              <dt>版本</dt>
+              <dd id="sFwVer">—</dd>
+              <dt>建置</dt>
+              <dd id="sFwBuild" class="mono">—</dd>
+              <dt>核心</dt>
+              <dd id="sCore">—</dd>
+              <dt>運作時間</dt>
+              <dd id="sUptime">—</dd>
+              <dt>重置原因</dt>
+              <dd id="sReset">—</dd>
+              <dt>亮度</dt>
+              <dd id="sBright">—</dd>
+            </dl>
+          </article>
+        </div>
+
+        <article class="card wide">
+          <h2>SPIFFS 儲存空間</h2>
+          <div class="bar"><div id="fsFill" class="bar-fill"></div></div>
+          <div id="fsText" class="mini">—</div>
+          <div class="table-wrap">
+            <table class="files">
+              <thead>
+                <tr>
+                  <th>檔案</th>
+                  <th class="num">大小</th>
+                </tr>
+              </thead>
+              <tbody id="fsList">
+                <tr>
+                  <td colspan="2" class="mini">載入中…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- ================= WiFi ================= -->
+      <section id="tab-wifi" class="panel">
+        <header class="page-head">
+          <h1>WiFi 設定</h1>
+          <div class="head-actions">
+            <button id="btnScan" class="btn">掃描 SSID</button>
+          </div>
+        </header>
+
+        <div class="cards">
+          <article class="card">
+            <h2>目前連線</h2>
+            <dl class="kv">
+              <dt>狀態</dt>
+              <dd id="wState">—</dd>
+              <dt>SSID</dt>
+              <dd id="wSsid">—</dd>
+              <dt>IP</dt>
+              <dd id="wIp">—</dd>
+              <dt>AP 熱點</dt>
+              <dd id="wApSsid" class="mono">—</dd>
+              <dt>AP 密碼</dt>
+              <dd id="wApPass" class="mono">—</dd>
+            </dl>
+            <p class="mini">
+              連線到新的路由器後，裝置會保留設定並自動重連。清除設定後會重新啟動並回到
+              AP 模式。
+            </p>
+          </article>
+
+          <article class="card">
+            <h2>連線到基地台</h2>
+            <label class="field">
+              <span>SSID</span>
+              <input
+                id="ssid"
+                type="text"
+                autocomplete="off"
+                placeholder="輸入或點選下方網路"
+              />
+            </label>
+            <label class="field">
+              <span>密碼</span>
+              <input
+                id="pass"
+                type="password"
+                autocomplete="new-password"
+                placeholder="開放網路可留白"
+              />
+            </label>
+            <div class="row">
+              <button id="btnConnect" class="btn primary">連線</button>
+              <button id="btnForget" class="btn danger">清除設定</button>
+            </div>
+            <div id="wifiMsg" class="msg"></div>
+          </article>
+        </div>
+
+        <article class="card wide">
+          <h2>附近網路 <span id="scanCount" class="mini"></span></h2>
+          <div id="scanList" class="scan-list">
+            <div class="mini">按「掃描 SSID」開始。</div>
+          </div>
+        </article>
+      </section>
+
+      <!-- ================= MAP ================= -->
+      <section id="tab-nav" class="panel">
+        <header class="page-head">
+          <h1>MAP 導航</h1>
+          <div class="head-actions">
+            <button id="btnClearRoute" class="btn danger ghost">
+              清除路線
+            </button>
+          </div>
+        </header>
+
+        <div class="map-layout">
+          <div class="map-card">
+            <div class="map-toolbar">
+              <input
+                id="search"
+                type="text"
+                placeholder="搜尋地點（Nominatim）"
+              />
+              <button id="btnSearch" class="btn">搜尋</button>
+            </div>
+            <div id="searchResults" class="search-results"></div>
+            <div id="map"></div>
+            <div class="map-modes">
+              <button class="btn mode active" data-mode="dest">設定終點</button>
+              <button class="btn mode" data-mode="start">設定起點</button>
+              <button class="btn mode" data-mode="me">模擬位置</button>
+            </div>
+            <div id="mapHint" class="mini">
+              在地圖上點一下設定終點，再按「規劃路線」。
+            </div>
+          </div>
+
+          <div class="nav-side">
+            <article class="card">
+              <h2>路線</h2>
+              <div class="route-points">
+                <div>
+                  <span class="dot start"></span
+                  ><span id="startText">未設定</span>
+                </div>
+                <div>
+                  <span class="dot dest"></span
+                  ><span id="destText">未設定</span>
+                </div>
+              </div>
+              <div class="row">
+                <button id="btnRoute" class="btn primary">規劃路線</button>
+                <button id="btnLocate" class="btn ghost">定位</button>
+              </div>
+              <div id="routeMsg" class="msg"></div>
+              <div id="routeSummary" class="summary hidden">
+                <div><b id="routeDist">—</b><span>總距離</span></div>
+                <div><b id="routeTime">—</b><span>預估時間</span></div>
+              </div>
+            </article>
+
+            <article class="card">
+              <h2>即時導航</h2>
+              <div id="navLive" class="live">
+                <div class="live-arrow">↑</div>
+                <div>
+                  <div id="navInstr" class="live-instr">尚未規劃路線</div>
+                  <div id="navMeta" class="mini">—</div>
+                </div>
+              </div>
+              <div id="navSteps" class="steps"></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= OTA ================= -->
+      <section id="tab-ota" class="panel">
+        <header class="page-head">
+          <h1>OTA 更新</h1>
+          <div class="head-actions">
+            <button id="btnReboot" class="btn danger ghost">重新啟動</button>
+          </div>
+        </header>
+
+        <div class="cards">
+          <article class="card">
+            <h2>韌體更新（firmware.bin）</h2>
+            <p class="mini">
+              從 Arduino IDE 匯出二進位檔：草稿碼 → 匯出已編譯的二進位檔，或使用
+              arduino-cli 產生的 .bin。
+            </p>
+            <input
+              id="fwFile"
+              type="file"
+              accept=".bin,application/octet-stream"
+            />
+            <button id="btnFw" class="btn primary">上傳韌體</button>
+            <div class="bar"><div id="fwBar" class="bar-fill"></div></div>
+            <div id="fwMsg" class="msg"></div>
+          </article>
+
+          <article class="card">
+            <h2>網頁檔案（spiffs.bin）</h2>
+            <p class="mini">
+              包含 index.html / style.css /
+              app.js。更新完成後裝置會自動重新啟動。
+            </p>
+            <input
+              id="fsFile"
+              type="file"
+              accept=".bin,application/octet-stream"
+            />
+            <button id="btnFs" class="btn primary">上傳檔案系統</button>
+            <div class="bar"><div id="fsBar" class="bar-fill"></div></div>
+            <div id="fsMsg" class="msg"></div>
+          </article>
+        </div>
+
+        <article class="card wide">
+          <h2>注意事項</h2>
+          <ul class="notes">
+            <li>更新期間請勿斷電，裝置會在完成後自動重新啟動。</li>
+            <li>
+              韌體分割表必須為
+              <span class="mono">3MB APP x2 + 9.375MB SPIFFS</span>，否則 OTA
+              會失敗。
+            </li>
+            <li>
+              SPIFFS
+              更新會先卸載檔案系統，上傳期間網頁可能暫時無法開啟，屬正常現象。
+            </li>
+            <li>若更新後無法連線，請以 USB 重新燒錄並重新上傳 data/。</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

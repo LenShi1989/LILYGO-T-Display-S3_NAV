@@ -65,18 +65,17 @@ LILYGO-T-Display-S3_NAV/           專案根目錄（Git repository）
 │   ├── wifi_manager.h / .cpp      STA / AP、mDNS、NVS 帳密
 │   ├── nav_engine.h / .cpp        OSRM 查詢、方位角、剩餘里程、轉彎文字
 │   ├── web_server.h / .cpp        REST API、靜態網頁、OTA
-│   └── json_compat.h              ArduinoJson 6 / 7 相容
-├── data/                          網頁前端（打包成 SPIFFS 映像）
+│   ├── json_compat.h              ArduinoJson 6 / 7 相容
+│   └── data/                      網頁前端（打包成 SPIFFS 映像）
 ├── docs/                          腳位圖
 ├── tools/gen_cjk_font.py          字型產生器
-├── partitions.csv                 3MB APP x2 + 9.375MB SPIFFS
 └── README.md
 ```
 
 > **注意**：Arduino IDE 的「ESP32 Sketch Data Upload」與自動套用 `partitions.csv`
 > 都只認 **sketch 資料夾內**的 `data/` 與 `partitions.csv`。
-> 本專案將兩者放在專案根目錄以保持版面清爽，因此上傳前需先複製到 sketch 資料夾，
-> 或改用本文件提供的 `mkspiffs` + 網頁 OTA 流程（見「OTA 更新」）。
+> 本專案的 `data/` 已直接放在 sketch 資料夾內並納入版控；`partitions.csv` 則保留在
+> 根目錄，另於 sketch 資料夾放置一份供自動套用（該副本不進版控）。
 
 ---
 
@@ -108,11 +107,7 @@ copy partitions.csv LILYGO-T-Display-S3_Nav\partitions.csv
 
 1. 以 Arduino IDE 開啟 `LILYGO-T-Display-S3_Nav/LILYGO-T-Display-S3_Nav.ino`。
 2. 選擇開發板與序列埠，按「上傳」。
-3. 首次燒錄後，SPIFFS 尚無網頁檔案，需上傳 `data/`：
-   - 先將前端複製到 sketch 資料夾：
-     ```powershell
-     xcopy /E /I /Y data LILYGO-T-Display-S3_Nav\data
-     ```
+3. 首次燒錄後，SPIFFS 尚無網頁檔案，需上傳 `LILYGO-T-Display-S3_Nav/data/`：
    - 安裝 **ESP32 Sketch Data Upload** 外掛（arduino-esp32fs-plugin），
      再於 Arduino IDE 執行 `Tools > ESP32 Sketch Data Upload`。
    - 或使用 `mkspiffs` / `arduino-cli` 自行產生映像後，由網頁 OTA 上傳（見「OTA 更新」）。
@@ -203,13 +198,13 @@ arduino-cli：加上 `--output-dir` 指定輸出資料夾後取用 `*.ino.bin`�
 （`0x960000` = 9.375 MB）：
 
 ```bash
-mkspiffs -c data -p 256 -b 4096 -s 0x960000 spiffs.bin
+mkspiffs -c LILYGO-T-Display-S3_Nav/data -p 256 -b 4096 -s 0x960000 spiffs.bin
 ```
 
 上傳完成後裝置會自動重新啟動。
 
 > 若使用 Arduino IDE 內建的「ESP32 Sketch Data Upload」，`data/` 必須位於
-> `LILYGO-T-Display-S3_Nav/` 內（見「編譯與上傳」的複製指令）。
+> `LILYGO-T-Display-S3_Nav/` 內，本專案已如此配置。
 
 ---
 
