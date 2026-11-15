@@ -17,6 +17,9 @@ String ip();
 String hostname();
 String macString();
 
+// AP 熱點 SSID：ESP32-S3_NAV-<MAC 後 4 碼>
+String apSsid();
+
 // 連線到指定 AP（會阻塞最多 WIFI_CONNECT_MS），成功才寫入 NVS
 bool connect(const String &ssid, const String &pass, String &err);
 

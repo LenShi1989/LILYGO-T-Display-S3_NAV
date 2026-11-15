@@ -71,7 +71,7 @@ void setup() {
   if (g_app.wifi.staConnected) {
     line1 = g_app.wifi.ip;
   } else {
-    line1 = String("AP: ") + AP_SSID;
+    line1 = String("AP: ") + Net::apSsid();
   }
   Ui::splash("系統已就緒", line1.c_str(), "http://" MDNS_HOST ".local", 100);
   delay(900);

@@ -4,7 +4,7 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 
 - 開發板：**LILYGO T-Display-S3**（ESP32-S3，16MB Flash / 8MB PSRAM，ST7789 170×320 8-bit 並列）
 - 操作：**GPIO0**（板載 BOOT）＝選擇、**GPIO14**（外接按鍵對 GND）＝確認，長按 0.8 秒返回
-- 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`（SSID `T-Display-S3-NAV`、預設密碼 `12345678`）
+- 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`（SSID `ESP32-S3_NAV-<MAC後4碼>`、預設密碼 `12345678`）
 
 ---
 
@@ -117,7 +117,7 @@ copy partitions.csv LILYGO-T-Display-S3_Nav\partitions.csv
      再於 Arduino IDE 執行 `Tools > ESP32 Sketch Data Upload`。
    - 或使用 `mkspiffs` / `arduino-cli` 自行產生映像後，由網頁 OTA 上傳（見「OTA 更新」）。
 4. 重新啟動後：
-   - 若尚未設定 WiFi：裝置開啟 AP `T-Display-S3-NAV`，預設密碼 `12345678`。
+   - 若尚未設定 WiFi：裝置開啟 AP `ESP32-S3_NAV-<MAC後4碼>`（例：`ESP32-S3_NAV-A1B2`），預設密碼 `12345678`。
    - 連上 AP 後開啟 `http://192.168.4.1` 或 `http://nav.local` 設定家中 WiFi。
    - 連線成功後，裝置會以 `nav.local` 提供網頁（也可使用取得的 IP）。
 

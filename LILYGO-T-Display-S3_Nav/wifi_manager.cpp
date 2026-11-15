@@ -14,6 +14,7 @@ static DNSServer   s_dns;
 
 static String   s_ssid;
 static String   s_pass;
+static String   s_apSsid;
 static bool     s_hasCreds    = false;
 static bool     s_dnsActive   = false;
 static bool     s_mdnsStarted = false;
@@ -21,15 +22,25 @@ static uint32_t s_lastAttempt = 0;
 static uint8_t  s_retries     = 0;
 static uint32_t s_lastSnap    = 0;
 
+// AP SSID = 前綴 + MAC 後 4 碼（大寫十六進位，不含冒號）
+static String makeApSsid() {
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  mac.toUpperCase();
+  if (mac.length() > 4) mac = mac.substring(mac.length() - 4);
+  return String(AP_SSID_PREFIX) + "-" + mac;
+}
+
 static void startAp() {
   if (s_dnsActive) return;
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(AP_SSID, AP_PASS);
+  if (s_apSsid.length() == 0) s_apSsid = makeApSsid();
+  WiFi.softAP(s_apSsid.c_str(), AP_PASS);
   WiFi.softAPsetHostname(MDNS_HOST);
   delay(120);
   s_dns.start(53, "*", WiFi.softAPIP());
   s_dnsActive = true;
-  Serial.printf("[wifi] AP 模式：%s / %s / %s\n", AP_SSID, AP_PASS,
+  Serial.printf("[wifi] AP 模式：%s / %s / %s\n", s_apSsid.c_str(), AP_PASS,
                 WiFi.softAPIP().toString().c_str());
 }
 
@@ -56,6 +67,7 @@ void begin() {
   WiFi.setHostname(MDNS_HOST);
   WiFi.setAutoReconnect(true);
   WiFi.mode(WIFI_STA);
+  s_apSsid = makeApSsid();
 
   if (!s_hasCreds) {
     startAp();
@@ -116,7 +128,7 @@ void snapshot() {
 
   w.staConnected = (WiFi.status() == WL_CONNECTED);
   w.apActive     = s_dnsActive;
-  w.apSsid       = AP_SSID;
+  w.apSsid       = apSsid();
   w.apPass       = AP_PASS;
   w.host         = String(MDNS_HOST) + ".local";
 
@@ -150,6 +162,11 @@ String ip() {
 
 String hostname() { return String(MDNS_HOST) + ".local"; }
 String macString() { return WiFi.macAddress(); }
+
+String apSsid() {
+  if (s_apSsid.length() == 0) s_apSsid = makeApSsid();
+  return s_apSsid;
+}
 String savedSsid() { return s_ssid; }
 
 bool connect(const String &ssid, const String &pass, String &err) {

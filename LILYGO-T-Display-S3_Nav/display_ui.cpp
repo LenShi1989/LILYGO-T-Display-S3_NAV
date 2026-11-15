@@ -17,15 +17,16 @@ namespace {
 // ---------------------------------------------------------------------------
 // 版面常數
 // ---------------------------------------------------------------------------
-constexpr int   MENU_Y      = 56;    // 選單第一列頂端
-constexpr int   MENU_ROW_H  = 48;    // 選單列高
-constexpr int   MENU_VIS    = 5;     // 一次可見列數
-constexpr int   INFO_Y      = 58;    // 資訊頁第一列
-constexpr int   INFO_ROW_H  = 26;
-constexpr int   INFO_ROWS   = 9;     // 資訊頁每頁列數
-constexpr int   DIAL_CX     = 85;
-constexpr int   DIAL_CY     = 134;
-constexpr int   DIAL_R      = 54;
+constexpr int   MENU_Y      = 44;    // 選單第一列頂端
+constexpr int   MENU_ROW_H  = 34;    // 選單列高
+constexpr int   MENU_VIS    = 3;     // 一次可見列數
+constexpr int   INFO_Y      = 46;    // 資訊頁第一列
+constexpr int   INFO_ROW_H  = 20;
+constexpr int   INFO_ROWS   = 5;     // 每欄列數
+constexpr int   INFO_COLS   = 2;     // 橫向雙欄
+constexpr int   DIAL_CX     = 56;
+constexpr int   DIAL_CY     = 112;
+constexpr int   DIAL_R      = 34;
 constexpr float kDeg        = 0.01745329252f;  // PI / 180
 
 TFT_eSPI    s_tft;
@@ -298,15 +299,15 @@ void drawStatus() {
     left = w.ssid;
     lc   = C_TEXT;
   } else if (w.apActive) {
-    left = "AP 模式";
+    left = String("AP ") + w.apSsid;
     lc   = C_ORANGE;
   } else {
     left = "未連線";
     lc   = C_MUTED;
   }
-  Txt::draw(6, 4, left.c_str(), lc, 80);
+  Txt::draw(6, 1, left.c_str(), lc, 180);
 
-  drawWifiIcon(90, 20, w.staConnected, w.rssi, w.apActive);
+  drawWifiIcon(196, 15, w.staConnected, w.rssi, w.apActive);
 
   char pct[8];
   if (b.present) {
@@ -314,9 +315,9 @@ void drawStatus() {
   } else {
     snprintf(pct, sizeof(pct), "USB");
   }
-  Txt::drawRight(138, 4, pct, b.present ? C_TEXT : C_MUTED, 32);
+  Txt::drawRight(284, 1, pct, b.present ? C_TEXT : C_MUTED, 40);
 
-  drawBatteryIcon(140, 8, b.present, b.percent);
+  drawBatteryIcon(290, 4, b.present, b.percent);
 
   s_statusSig = statusSignature();
 }
@@ -333,16 +334,16 @@ void refreshStatus() {
 // 標題 / 頁尾
 // ---------------------------------------------------------------------------
 void drawHeader(const char *title, const char *right) {
-  s_tft.fillRect(0, STATUS_H, SCR_W, 28, C_BG);
-  Txt::draw(10, STATUS_H + 6, title, C_WHITE);
-  if (right && *right) Txt::drawRight(160, STATUS_H + 6, right, C_MUTED, 48);
-  s_tft.drawFastHLine(0, STATUS_H + 27, SCR_W, C_BORDER);
+  s_tft.fillRect(0, HEADER_Y, SCR_W, HEADER_H, C_BG);
+  Txt::draw(10, HEADER_Y + 3, title, C_WHITE);
+  if (right && *right) Txt::drawRight(310, HEADER_Y + 3, right, C_MUTED, 120);
+  s_tft.drawFastHLine(0, HEADER_Y + HEADER_H - 1, SCR_W, C_BORDER);
 }
 
 void drawFooter(const char *hint) {
   s_tft.fillRect(0, FOOTER_Y, SCR_W, SCR_H - FOOTER_Y, C_PANEL);
   s_tft.drawFastHLine(0, FOOTER_Y, SCR_W, C_BORDER);
-  if (hint && *hint) Txt::drawCenter(85, FOOTER_Y + 4, hint, C_MUTED, 164);
+  if (hint && *hint) Txt::drawCenter(160, FOOTER_Y + 2, hint, C_MUTED, 300);
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +354,7 @@ void drawMenu() {
   const uint8_t   count = (s_level == 0) ? MAIN_COUNT : SYS_COUNT;
   const uint8_t   sel   = s_sel[s_level];
 
-  s_tft.fillRect(0, STATUS_H, SCR_W, FOOTER_Y - STATUS_H, C_BG);
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, FOOTER_Y - CONTENT_Y, C_BG);
   drawHeader(s_level == 0 ? "主選單" : "系統狀態", nullptr);
 
   int first = 0;
@@ -368,30 +369,30 @@ void drawMenu() {
     int y   = MENU_Y + row * MENU_ROW_H;
     bool on = (idx == sel);
 
-    s_tft.fillRect(8, y + 3, 154, MENU_ROW_H - 6, on ? C_PANEL2 : C_PANEL);
+    s_tft.fillRect(8, y + 2, 298, MENU_ROW_H - 6, on ? C_PANEL2 : C_PANEL);
     if (on) {
-      s_tft.drawRect(8, y + 3, 154, MENU_ROW_H - 6, C_ACCENT);
-      s_tft.fillRect(8, y + 3, 4, MENU_ROW_H - 6, C_ACCENT);
+      s_tft.drawRect(8, y + 2, 298, MENU_ROW_H - 6, C_ACCENT);
+      s_tft.fillRect(8, y + 2, 4, MENU_ROW_H - 6, C_ACCENT);
     } else {
-      s_tft.drawFastHLine(12, y + MENU_ROW_H - 4, 146, C_BORDER);
+      s_tft.drawFastHLine(12, y + MENU_ROW_H - 5, 290, C_BORDER);
     }
 
-    Txt::draw(22, y + 16, items[idx].label, on ? C_WHITE : C_TEXT, 118);
-    Txt::drawRight(152, y + 16, ">", on ? C_ACCENT : C_MUTED);
+    Txt::draw(22, y + 8, items[idx].label, on ? C_WHITE : C_TEXT, 240);
+    Txt::drawRight(298, y + 8, ">", on ? C_ACCENT : C_MUTED);
   }
 
   // 捲軸
   if (count > MENU_VIS) {
     int trackY = MENU_Y + 4;
-    int trackH = MENU_VIS * MENU_ROW_H - 10;
+    int trackH = MENU_VIS * MENU_ROW_H - 12;
     int thumbH = trackH * MENU_VIS / count;
     if (thumbH < 16) thumbH = 16;
     int thumbY = trackY + (trackH - thumbH) * first / (count - MENU_VIS);
-    s_tft.fillRect(165, trackY, 3, trackH, C_BORDER);
-    s_tft.fillRect(165, thumbY, 3, thumbH, C_ACCENT);
+    s_tft.fillRect(312, trackY, 3, trackH, C_BORDER);
+    s_tft.fillRect(312, thumbY, 3, thumbH, C_ACCENT);
   }
 
-  drawFooter("0:選擇  14:確認");
+  drawFooter("0:選擇   14:確認");
 }
 
 // ---------------------------------------------------------------------------
@@ -403,34 +404,37 @@ struct Row {
 };
 
 void drawInfoPage(const char *title, const Row *rows, int n) {
-  s_pageCount = (uint8_t)((n + INFO_ROWS - 1) / INFO_ROWS);
+  const int perPage = INFO_ROWS * INFO_COLS;
+  s_pageCount = (uint8_t)((n + perPage - 1) / perPage);
   if (s_pageCount == 0) s_pageCount = 1;
   if (s_page >= s_pageCount) s_page = s_pageCount - 1;
 
   char pg[12];
   snprintf(pg, sizeof(pg), "%u/%u", (unsigned)s_page + 1, (unsigned)s_pageCount);
 
-  s_tft.fillRect(0, STATUS_H, SCR_W, FOOTER_Y - STATUS_H, C_BG);
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, FOOTER_Y - CONTENT_Y, C_BG);
   drawHeader(title, s_pageCount > 1 ? pg : nullptr);
 
-  int start = (int)s_page * INFO_ROWS;
-  for (int i = 0; i < INFO_ROWS && start + i < n; i++) {
+  const int start = (int)s_page * perPage;
+  for (int i = 0; i < perPage && start + i < n; i++) {
     const Row &r = rows[start + i];
-    int y = INFO_Y + i * INFO_ROW_H;
+    const int col = i / INFO_ROWS;
+    const int row = i % INFO_ROWS;
+    const int cx  = 8 + col * 156;
+    const int y   = INFO_Y + row * INFO_ROW_H;
 
-    Txt::draw(10, y + 5, r.k, C_MUTED, 70);
+    Txt::draw(cx, y + 1, r.k, C_MUTED, 62);
 
-    int vx = 10 + Txt::width(r.k) + 10;
-    if (vx > 96) vx = 96;
-    int vw = 160 - vx;
-    Txt::drawRight(160, y + 5, r.v.c_str(), C_TEXT, vw);
+    int vx = cx + Txt::width(r.k) + 6;
+    if (vx > cx + 70) vx = cx + 70;
+    Txt::drawRight(cx + 146, y + 1, r.v.c_str(), C_TEXT, cx + 146 - vx);
 
-    if (start + i + 1 < n && i + 1 < INFO_ROWS) {
-      s_tft.drawFastHLine(10, y + INFO_ROW_H - 3, 150, C_BORDER);
+    if (start + i + 1 < n && row + 1 < INFO_ROWS) {
+      s_tft.drawFastHLine(cx, y + INFO_ROW_H - 2, 146, C_BORDER);
     }
   }
 
-  drawFooter(s_pageCount > 1 ? "0:換頁  14:返回" : "14:返回");
+  drawFooter(s_pageCount > 1 ? "0:換頁   14:返回" : "14:返回");
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +472,7 @@ int buildWifiRows(Row *out) {
   String mac = w.mac.length() ? w.mac : Net::macString();
   mac.replace(":", "");
   out[n++] = {"MAC", mac};
-  out[n++] = {"熱點", AP_SSID};
+  out[n++] = {"熱點", Net::apSsid()};
   out[n++] = {"熱點密碼", AP_PASS};
   return n;
 }
@@ -528,19 +532,19 @@ int buildAboutRows(Row *out) {
 // 顯示設定
 // ---------------------------------------------------------------------------
 void drawDispPage() {
-  s_tft.fillRect(0, STATUS_H, SCR_W, FOOTER_Y - STATUS_H, C_BG);
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, FOOTER_Y - CONTENT_Y, C_BG);
   drawHeader("顯示設定", nullptr);
 
-  Txt::drawCenter(85, 66, "背光亮度", C_MUTED);
+  Txt::drawCenter(160, 44, "背光亮度", C_MUTED);
 
   char buf[8];
   snprintf(buf, sizeof(buf), "%u%%", (unsigned)g_app.brightness);
   s_tft.setTextDatum(MC_DATUM);
   s_tft.setTextColor(C_ACCENT, C_BG);
   s_tft.setTextFont(4);
-  s_tft.drawString(buf, 85, 104);
+  s_tft.drawString(buf, 160, 74);
 
-  int barX = 20, barY = 132, barW = 130, barH = 12;
+  int barX = 80, barY = 94, barW = 160, barH = 12;
   s_tft.drawRect(barX, barY, barW, barH, C_BORDER);
   int fill = (barW - 4) * g_app.brightness / 100;
   if (fill > 0) s_tft.fillRect(barX + 2, barY + 2, fill, barH - 4, C_ACCENT);
@@ -555,16 +559,14 @@ void drawDispPage() {
     snprintf(buf, sizeof(buf), "%.2fV", (double)g_app.battery.voltage);
     String line = String("電池 ") + buf + " / " +
                   String((unsigned)g_app.battery.percent) + "%";
-    Txt::drawCenter(85, 174, line.c_str(), C_TEXT, 154);
+    Txt::drawCenter(160, 112, line.c_str(), C_TEXT, 300);
   } else {
-    Txt::drawCenter(85, 174, "電池：USB 供電", C_TEXT, 154);
+    Txt::drawCenter(160, 112, "電池：USB 供電", C_TEXT, 300);
   }
 
-  Txt::drawWrapped(12, 208, 146, 18,
-                   "短按 GPIO0 調整亮度，長按 GPIO14 返回。",
-                   C_MUTED, 4);
+  Txt::drawCenter(160, 132, "0 調整亮度 · 14長按返回", C_MUTED, 300);
 
-  drawFooter("0:調整  14:返回");
+  drawFooter("0:調整   14:返回");
 }
 
 // ---------------------------------------------------------------------------
@@ -574,25 +576,25 @@ void drawSplash() {
   s_tft.fillScreen(C_BG);
   s_tft.fillRect(0, 0, SCR_W, 4, C_ACCENT);
 
-  Txt::drawCenter(85, 40, FW_SHORT, C_ACCENT);
-  if (s_splashTitle[0]) Txt::drawCenter(85, 70, s_splashTitle, C_WHITE, 154);
-  if (s_splashL1[0]) Txt::drawCenter(85, 112, s_splashL1, C_MUTED, 154);
-  if (s_splashL2[0]) Txt::drawCenter(85, 136, s_splashL2, C_MUTED, 154);
+  Txt::drawCenter(160, 18, FW_SHORT, C_ACCENT);
+  if (s_splashTitle[0]) Txt::drawCenter(160, 42, s_splashTitle, C_WHITE, 300);
+  if (s_splashL1[0]) Txt::drawCenter(160, 66, s_splashL1, C_MUTED, 300);
+  if (s_splashL2[0]) Txt::drawCenter(160, 86, s_splashL2, C_MUTED, 300);
 
   if (s_splashProg >= 0) {
     int p = s_splashProg;
     if (p > 100) p = 100;
-    s_tft.drawRect(20, 192, 130, 10, C_BORDER);
-    if (p > 0) s_tft.fillRect(21, 193, 128 * p / 100, 8, C_ACCENT);
+    s_tft.drawRect(70, 108, 180, 10, C_BORDER);
+    if (p > 0) s_tft.fillRect(71, 109, 178 * p / 100, 8, C_ACCENT);
     char b[8];
     snprintf(b, sizeof(b), "%d%%", p);
-    Txt::drawCenter(85, 210, b, C_MUTED);
+    Txt::drawCenter(160, 122, b, C_MUTED);
   }
 
   char ver[16];
   snprintf(ver, sizeof(ver), "v%s", FW_VERSION);
-  Txt::drawCenter(85, 262, ver, C_MUTED);
-  Txt::drawCenter(85, 284, FW_BOARD, C_MUTED, 164);
+  Txt::drawCenter(160, 134, ver, C_MUTED);
+  Txt::drawCenter(160, 152, FW_BOARD, C_MUTED, 300);
 }
 
 // ---------------------------------------------------------------------------
@@ -600,8 +602,8 @@ void drawSplash() {
 // ---------------------------------------------------------------------------
 void navInstructionArea() {
   const NavStatus &n = Nav::status();
-  s_tft.fillRect(0, STATUS_H, SCR_W, 44, C_BG);
-  Txt::drawWrapped(8, STATUS_H + 4, 154, 18, n.instruction, C_WHITE, 2);
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, 38, C_BG);
+  Txt::drawWrapped(10, CONTENT_Y + 2, 300, 18, n.instruction, C_WHITE, 2);
 }
 
 void navDialFrame() {
@@ -629,12 +631,12 @@ void navDialNeedle() {
   const NavStatus &n = Nav::status();
   const int cx = DIAL_CX, cy = DIAL_CY;
 
-  s_tft.fillCircle(cx, cy, DIAL_R - 11, C_PANEL);
+  s_tft.fillCircle(cx, cy, DIAL_R - 9, C_PANEL);
 
   if (n.arrived) {
     for (int i = -2; i <= 2; i++) {
-      s_tft.drawLine(cx - 14, cy + i, cx - 4, cy + 10 + i, C_GREEN);
-      s_tft.drawLine(cx - 4, cy + 10 + i, cx + 16, cy - 12 + i, C_GREEN);
+      s_tft.drawLine(cx - 10, cy + i, cx - 3, cy + 8 + i, C_GREEN);
+      s_tft.drawLine(cx - 3, cy + 8 + i, cx + 12, cy - 9 + i, C_GREEN);
     }
     return;
   }
@@ -643,7 +645,7 @@ void navDialNeedle() {
   float sx = sinf(rad), sy = -cosf(rad);
   float px = -sy, py = sx;
 
-  const float tip = 38.0f, base = 6.0f, hw = 12.0f;
+  const float tip = 24.0f, base = 4.0f, hw = 8.0f;
   s_tft.fillTriangle((int)(cx + sx * tip), (int)(cy + sy * tip),
                      (int)(cx + sx * base + px * hw),
                      (int)(cy + sy * base + py * hw),
@@ -652,11 +654,11 @@ void navDialNeedle() {
                      C_ACCENT);
 
   // 尾翼
-  s_tft.fillTriangle((int)(cx - sx * 20), (int)(cy - sy * 20),
-                     (int)(cx + sx * 2 + px * 7),
-                     (int)(cy + sy * 2 + py * 7),
-                     (int)(cx + sx * 2 - px * 7),
-                     (int)(cy + sy * 2 - py * 7),
+  s_tft.fillTriangle((int)(cx - sx * 14), (int)(cy - sy * 14),
+                     (int)(cx + sx * 2 + px * 5),
+                     (int)(cy + sy * 2 + py * 5),
+                     (int)(cx + sx * 2 - px * 5),
+                     (int)(cy + sy * 2 - py * 5),
                      C_ACCENT_DIM);
 
   s_tft.fillCircle(cx, cy, 4, C_BG);
@@ -666,56 +668,41 @@ void navDialNeedle() {
 void navBottom() {
   const NavStatus &n = Nav::status();
 
-  s_tft.fillRect(0, 192, SCR_W, FOOTER_Y - 192, C_BG);
+  s_tft.fillRect(100, 78, SCR_W - 100, FOOTER_Y - 78, C_BG);
 
   String d = fmtDist(n.distToNext);
   s_tft.setTextDatum(MC_DATUM);
   s_tft.setTextColor(n.arrived ? C_GREEN : C_WHITE, C_BG);
   s_tft.setTextFont(4);
-  s_tft.drawString(d, 85, 206);
+  s_tft.drawString(d, 206, 92);
 
   char line[72];
   snprintf(line, sizeof(line), "剩 %s / %s",
            fmtDistShort(n.remainingDist).c_str(),
            fmtDurShort(n.remainingTime).c_str());
-  Txt::drawCenter(85, 224, line, C_MUTED, 158);
+  Txt::drawCenter(206, 110, line, C_MUTED, 204);
 
-  Txt::drawCenter(85, 248, n.destName, C_TEXT, 158);
-
-  char step[32];
-  snprintf(step, sizeof(step), "步驟 %u/%u", (unsigned)n.stepIndex + 1,
-           (unsigned)n.stepCount);
-  Txt::drawCenter(85, 270, step, C_MUTED, 120);
+  Txt::drawCenter(206, 128, n.destName, C_TEXT, 204);
 }
 
 void navEmpty() {
-  const int cx = 85, cy = 104;
+  const int cx = 160;
 
-  s_tft.drawCircle(cx, cy, 34, C_BORDER);
-  s_tft.drawTriangle(cx, cy - 26, cx - 15, cy + 12, cx + 15, cy + 12,
-                     C_ACCENT_DIM);
-  s_tft.drawFastVLine(cx, cy + 12, 10, C_ACCENT_DIM);
+  s_tft.drawCircle(cx, 48, 16, C_BORDER);
+  s_tft.drawTriangle(cx, 38, cx - 8, 58, cx + 8, 58, C_ACCENT_DIM);
+  s_tft.drawFastVLine(cx, 58, 6, C_ACCENT_DIM);
 
-  Txt::drawCenter(85, 150, "尚未規劃路線", C_TEXT, 158);
-  Txt::drawWrapped(12, 178, 146, 18, "請用手機或電腦開啟下列網址，於地圖設定目的地：",
+  Txt::drawCenter(cx, 72, "尚未規劃路線", C_TEXT, 300);
+  Txt::drawWrapped(20, 94, 280, 18,
+                   "請用手機或電腦開啟下列網址，於地圖設定目的地：",
                    C_MUTED, 2);
-  Txt::drawCenter(85, 218, "http://nav.local", C_ACCENT, 158);
-
-  char apLine[40];
-  if (g_app.wifi.apActive) {
-    snprintf(apLine, sizeof(apLine), "AP: %s", AP_SSID);
-    Txt::drawCenter(85, 244, apLine, C_MUTED, 158);
-    Txt::drawCenter(85, 264, "密碼: " AP_PASS, C_MUTED, 158);
-  } else {
-    String line = String("IP: ") + (g_app.wifi.ip.length() ? g_app.wifi.ip : String("—"));
-    Txt::drawCenter(85, 244, line.c_str(), C_MUTED, 158);
-  }
+  Txt::drawCenter(cx, 130, "http://nav.local", C_ACCENT, 300);
 }
 
 void drawNavFull() {
   const NavStatus &n = Nav::status();
 
-  s_tft.fillRect(0, STATUS_H, SCR_W, FOOTER_Y - STATUS_H, C_BG);
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, FOOTER_Y - CONTENT_Y, C_BG);
 
   if (!n.active) {
     navEmpty();
@@ -726,7 +713,17 @@ void drawNavFull() {
     navBottom();
   }
 
-  drawFooter("14長按:返回");
+  char hint[72];
+  if (!n.active && g_app.wifi.apActive) {
+    snprintf(hint, sizeof(hint), "14長按返回   AP %s / %s",
+             g_app.wifi.apSsid.c_str(), AP_PASS);
+  } else if (n.active) {
+    snprintf(hint, sizeof(hint), "步驟 %u/%u   14長按返回",
+             (unsigned)n.stepIndex + 1, (unsigned)n.stepCount);
+  } else {
+    snprintf(hint, sizeof(hint), "14長按:返回");
+  }
+  drawFooter(hint);
 
   s_navActive = n.active;
   s_navSteps  = n.stepCount;
@@ -758,45 +755,45 @@ void updateNav() {
 // 覆蓋層
 // ---------------------------------------------------------------------------
 void overlayModal() {
-  const int x = 12, y = 104, w = 146, h = 104;
+  const int x = 40, y = 36, w = 240, h = 100;
 
   s_tft.fillRect(x, y, w, h, C_PANEL2);
   s_tft.drawRect(x, y, w, h, C_ACCENT);
   s_tft.drawFastHLine(x + 2, y + 2, w - 4, C_ACCENT_DIM);
 
-  Txt::drawCenter(x + w / 2, y + 12, s_ovTitle, C_WHITE, w - 16);
-  if (s_ovL1[0]) Txt::drawCenter(x + w / 2, y + 46, s_ovL1, C_TEXT, w - 16);
-  if (s_ovL2[0]) Txt::drawCenter(x + w / 2, y + 70, s_ovL2, C_MUTED, w - 16);
+  Txt::drawCenter(x + w / 2, y + 10, s_ovTitle, C_WHITE, w - 20);
+  if (s_ovL1[0]) Txt::drawCenter(x + w / 2, y + 38, s_ovL1, C_TEXT, w - 20);
+  if (s_ovL2[0]) Txt::drawCenter(x + w / 2, y + 62, s_ovL2, C_MUTED, w - 20);
 }
 
 void overlayToast() {
-  const int x = 4, y = 246, w = 162, h = 36;
+  const int x = 20, y = 108, w = 280, h = 30;
 
   s_tft.fillRect(x, y, w, h, C_PANEL2);
   s_tft.drawRect(x, y, w, h, s_toastColor);
-  Txt::drawCenter(x + w / 2, y + 10, s_ovL1, s_toastColor, w - 14);
+  Txt::drawCenter(x + w / 2, y + 7, s_ovL1, s_toastColor, w - 20);
 }
 
 void overlayOta() {
   s_tft.fillScreen(C_BG);
   s_tft.fillRect(0, 0, SCR_W, 4, C_ACCENT);
 
-  Txt::drawCenter(85, 36, s_ovTitle, C_WHITE, 154);
+  Txt::drawCenter(160, 14, s_ovTitle, C_WHITE, 300);
 
   if (s_otaResult) {
     if (s_otaOk) {
       for (int i = -3; i <= 3; i++) {
-        s_tft.drawLine(62, 92 + i, 80, 112 + i, C_GREEN);
-        s_tft.drawLine(80, 112 + i, 112, 70 + i, C_GREEN);
+        s_tft.drawLine(142, 62 + i, 158, 80 + i, C_GREEN);
+        s_tft.drawLine(158, 80 + i, 190, 46 + i, C_GREEN);
       }
     } else {
       for (int i = -3; i <= 3; i++) {
-        s_tft.drawLine(64, 74 + i, 106, 116 + i, C_RED);
-        s_tft.drawLine(106, 74 + i, 64, 116 + i, C_RED);
+        s_tft.drawLine(144, 48 + i, 184, 88 + i, C_RED);
+        s_tft.drawLine(184, 48 + i, 144, 88 + i, C_RED);
       }
     }
-    if (s_ovL1[0]) Txt::drawCenter(85, 150, s_ovL1, C_TEXT, 154);
-    if (s_ovL2[0]) Txt::drawCenter(85, 176, s_ovL2, C_MUTED, 154);
+    if (s_ovL1[0]) Txt::drawCenter(160, 108, s_ovL1, C_TEXT, 300);
+    if (s_ovL2[0]) Txt::drawCenter(160, 132, s_ovL2, C_MUTED, 300);
     return;
   }
 
@@ -805,9 +802,9 @@ void overlayOta() {
   s_tft.setTextDatum(MC_DATUM);
   s_tft.setTextColor(C_ACCENT, C_BG);
   s_tft.setTextFont(4);
-  s_tft.drawString(pct, 85, 108);
+  s_tft.drawString(pct, 160, 54);
 
-  const int barX = 20, barY = 140, barW = 130, barH = 14;
+  const int barX = 80, barY = 82, barW = 160, barH = 14;
   s_tft.drawRect(barX, barY, barW, barH, C_BORDER);
   int fill = (barW - 4) * s_otaPct / 100;
   if (fill > 0) s_tft.fillRect(barX + 2, barY + 2, fill, barH - 4, C_ACCENT);
@@ -815,10 +812,10 @@ void overlayOta() {
   char bytes[48];
   snprintf(bytes, sizeof(bytes), "%s / %s", fmtBytes(s_otaDone).c_str(),
            fmtBytes(s_otaTotal).c_str());
-  Txt::drawCenter(85, 170, bytes, C_MUTED, 154);
+  Txt::drawCenter(160, 108, bytes, C_MUTED, 300);
 
-  Txt::drawCenter(85, 206, "更新中，請勿斷電", C_RED, 154);
-  Txt::drawCenter(85, 232, "完成後自動重新啟動", C_MUTED, 154);
+  Txt::drawCenter(160, 128, "更新中，請勿斷電", C_RED, 300);
+  Txt::drawCenter(160, 148, "完成後自動重新啟動", C_MUTED, 300);
 }
 
 void drawOverlay() {
@@ -932,7 +929,7 @@ void begin() {
   g_app.brightness = bl;
 
   s_tft.init();
-  s_tft.setRotation(0);
+  s_tft.setRotation(1);
   s_tft.fillScreen(C_BG);
   s_tft.setTextDatum(TL_DATUM);
   s_tft.setTextFont(1);

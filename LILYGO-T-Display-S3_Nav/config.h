@@ -35,10 +35,13 @@
 // ---------------------------------------------------------------------------
 // 螢幕
 // ---------------------------------------------------------------------------
-#define SCR_W            170
-#define SCR_H            320
-#define STATUS_H         24
-#define FOOTER_Y         296
+#define SCR_W            320
+#define SCR_H            170
+#define STATUS_H         18
+#define HEADER_Y         STATUS_H
+#define HEADER_H         22
+#define CONTENT_Y        (STATUS_H + HEADER_H)   // 40
+#define FOOTER_Y         150
 #define C_BG             RGB565(11, 18, 32)
 #define C_PANEL          RGB565(19, 28, 46)
 #define C_PANEL2         RGB565(27, 39, 61)
@@ -57,7 +60,7 @@
 // ---------------------------------------------------------------------------
 // WiFi / AP
 // ---------------------------------------------------------------------------
-#define AP_SSID              "T-Display-S3-NAV"
+#define AP_SSID_PREFIX       "ESP32-S3_NAV"    // 完整 SSID = 前綴-MAC 後 4 碼
 #define AP_PASS              "12345678"       // 至少 8 碼
 #define MDNS_HOST            "nav"            // http://nav.local
 #define WIFI_CONNECT_MS      15000            // 單次連線等待
