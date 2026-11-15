@@ -247,6 +247,8 @@ bool fetchRoute(double slat, double slon, double dlat, double dlon,
   int code = http.GET();
   if (code != 200) {
     err = String("OSRM 回應 HTTP ") + code;
+    if (code < 0) err += String("（") + http.errorToString(code) + "）";
+    Serial.printf("[nav] OSRM 連線失敗：%s\n", err.c_str());
     http.end();
     return false;
   }

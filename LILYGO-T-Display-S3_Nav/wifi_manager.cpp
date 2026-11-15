@@ -22,13 +22,23 @@ static uint32_t s_lastAttempt = 0;
 static uint8_t  s_retries     = 0;
 static uint32_t s_lastSnap    = 0;
 
+// 晶片出廠 MAC（不依賴 WiFi netif 是否已啟動；macAddress() 在介面
+// 尚未啟動時會回傳全零，導致 AP SSID 尾碼變成 0000）
+static String hwMac() {
+  uint64_t v = ESP.getEfuseMac();
+  char buf[18];
+  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+           (unsigned)((v >> 40) & 0xFF), (unsigned)((v >> 32) & 0xFF),
+           (unsigned)((v >> 24) & 0xFF), (unsigned)((v >> 16) & 0xFF),
+           (unsigned)((v >> 8) & 0xFF), (unsigned)(v & 0xFF));
+  return String(buf);
+}
+
 // AP SSID = 前綴 + MAC 後 4 碼（大寫十六進位，不含冒號）
 static String makeApSsid() {
-  String mac = WiFi.macAddress();
+  String mac = hwMac();
   mac.replace(":", "");
-  mac.toUpperCase();
-  if (mac.length() > 4) mac = mac.substring(mac.length() - 4);
-  return String(AP_SSID_PREFIX) + "-" + mac;
+  return String(AP_SSID_PREFIX) + "-" + mac.substring(8);
 }
 
 static void startAp() {
@@ -137,14 +147,14 @@ void snapshot() {
     w.ip      = WiFi.localIP().toString();
     w.rssi    = WiFi.RSSI();
     w.channel = WiFi.channel();
-    w.mac     = WiFi.macAddress();
+    w.mac     = hwMac();
     if (!wasConnected || w.connectedAt == 0) w.connectedAt = millis();
   } else {
     w.ssid = s_ssid;
     w.ip   = "";
     w.rssi = 0;
     w.channel = 0;
-    w.mac  = WiFi.macAddress();
+    w.mac  = hwMac();
     w.connectedAt = 0;
   }
 
@@ -161,7 +171,7 @@ String ip() {
 }
 
 String hostname() { return String(MDNS_HOST) + ".local"; }
-String macString() { return WiFi.macAddress(); }
+String macString() { return hwMac(); }
 
 String apSsid() {
   if (s_apSsid.length() == 0) s_apSsid = makeApSsid();
