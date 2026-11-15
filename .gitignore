@@ -22,6 +22,10 @@ Thumbs.db
 .DS_Store
 desktop.ini
 
+# 由根目錄複製到 sketch 資料夾的上傳用副本
+LILYGO-T-Display-S3_Nav/data/
+LILYGO-T-Display-S3_Nav/partitions.csv
+
 # 產生的字型快取（cjk_font.h 需提交）
 unifont.hex
 unifont.hex.gz

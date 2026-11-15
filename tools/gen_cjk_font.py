@@ -8,7 +8,7 @@
 #    python tools/gen_cjk_font.py --pkl %TEMP%\unifont.pkl
 #
 #  字集：ASCII (0x20-0x7E) + Big5 全部 + GB2312 全部 + 原始碼中用到的字元
-#  輸出：cjk_font.h（放在 sketch 資料夾根目錄）
+#  輸出：LILYGO-T-Display-S3_Nav/cjk_font.h（自動尋找含 .ino 的資料夾）
 #
 #  字型來源：GNU Unifont（https://unifoundry.com/unifont/）
 #  授權：GPL-2.0-or-later 搭配字型嵌入例外條款，或 SIL OFL 1.1
@@ -27,6 +27,27 @@ TEMP = os.environ.get("TEMP", tempfile.gettempdir())
 DEFAULT_HEX = os.path.join(TEMP, "unifont.hex.gz")
 DEFAULT_PKL = os.path.join(TEMP, "unifont.pkl")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_sketch_dir():
+    """回傳包含 .ino 的 sketch 資料夾；找不到時回退 ROOT"""
+    try:
+        names = sorted(os.listdir(ROOT))
+    except OSError:
+        return ROOT
+    for name in names:
+        path = os.path.join(ROOT, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            if any(f.endswith(".ino") for f in os.listdir(path)):
+                return path
+        except OSError:
+            continue
+    return ROOT
+
+
+SKETCH = find_sketch_dir()
 
 ASCII_FIRST = 0x20
 ASCII_LAST = 0x7E
@@ -88,19 +109,21 @@ def gb_chars():
 
 
 def source_chars():
-    """掃描 sketch 內的 C/C++ 檔案，收集所有非 ASCII 字元"""
+    """遞迴掃描 sketch 資料夾內的 C/C++ 檔案，收集所有非 ASCII 字元"""
     chars = set()
-    for name in os.listdir(ROOT):
-        if not name.endswith((".ino", ".h", ".cpp", ".c")):
-            continue
-        path = os.path.join(ROOT, name)
-        try:
-            text = open(path, encoding="utf-8", errors="ignore").read()
-        except OSError:
-            continue
-        for ch in text:
-            if ord(ch) > 0x7F:
-                chars.add(ch)
+    for root, dirs, files in os.walk(SKETCH):
+        dirs[:] = [d for d in dirs if d not in ("build", "__pycache__", ".git")]
+        for name in files:
+            if not name.endswith((".ino", ".h", ".cpp", ".c")):
+                continue
+            path = os.path.join(root, name)
+            try:
+                text = open(path, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                continue
+            for ch in text:
+                if ord(ch) > 0x7F:
+                    chars.add(ch)
     return chars
 
 
@@ -233,7 +256,7 @@ def main():
     ap.add_argument("--hex", help="unifont .hex 或 .hex.gz 路徑")
     ap.add_argument("--pkl", default=DEFAULT_PKL, help="已快取的 pickle")
     ap.add_argument("--download", action="store_true", help="找不到時自動下載")
-    ap.add_argument("--out", default=os.path.join(ROOT, "cjk_font.h"))
+    ap.add_argument("--out", default=os.path.join(SKETCH, "cjk_font.h"))
     ap.add_argument("--no-source", action="store_true", help="不掃描原始碼")
     args = ap.parse_args()
 

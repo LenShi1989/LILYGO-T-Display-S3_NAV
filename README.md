@@ -4,7 +4,7 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 
 - 開發板：**LILYGO T-Display-S3**（ESP32-S3，16MB Flash / 8MB PSRAM，ST7789 170×320 8-bit 並列）
 - 操作：**GPIO0**（板載 BOOT）＝選擇、**GPIO14**（外接按鍵對 GND）＝確認，長按 0.8 秒返回
-- 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`
+- 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`（SSID `T-Display-S3-NAV`、預設密碼 `12345678`）
 
 ---
 
@@ -42,16 +42,47 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 ### 函式庫安裝
 
 1. **TFT_eSPI 2.5.43**：`Tools > Manage Libraries` 搜尋安裝。
-   skech 內的 `tft_setup.h` 會由 TFT_eSPI 2.5.31+ 自動載入，**不需要修改函式庫的 `User_Setup.h`**。
+   sketch 內的 `tft_setup.h` 會由 TFT_eSPI 2.5.31+ 自動載入，**不需要修改函式庫的 `User_Setup.h`**。
 2. **ArduinoJson 7.4.2**（或 6.x）：`json_compat.h` 會自動處理版本差異。
 3. 其餘（WiFi、WebServer、Update、SPIFFS、Preferences、DNSServer、ESPmDNS、HTTPClient、
    WiFiClientSecure）皆為 ESP32 核心內建。
 
 ---
 
+## 目錄結構
+
+```
+LILYGO-T-Display-S3_NAV/           專案根目錄（Git repository）
+├── LILYGO-T-Display-S3_Nav/       Arduino sketch 資料夾
+│   ├── LILYGO-T-Display-S3_Nav.ino  主程式（資料夾與 .ino 必須同名）
+│   ├── config.h                   腳位、顏色、AP / mDNS 設定
+│   ├── tft_setup.h                TFT_eSPI 設定（ST7789 / 8-bit 並列）
+│   ├── display_ui.h / .cpp        狀態列、選單、資訊頁、導航轉盤、提示 / OTA 畫面
+│   ├── ui_text.h / .cpp           16px 點陣字繪製（ASCII 半寬 + CJK 全寬）
+│   ├── cjk_font.h                 自動產生的字型點陣（請勿手改）
+│   ├── app_state.h / .cpp         共用狀態、格式化工具
+│   ├── buttons.h / .cpp           GPIO0 / GPIO14 去彈跳、長按、連發
+│   ├── wifi_manager.h / .cpp      STA / AP、mDNS、NVS 帳密
+│   ├── nav_engine.h / .cpp        OSRM 查詢、方位角、剩餘里程、轉彎文字
+│   ├── web_server.h / .cpp        REST API、靜態網頁、OTA
+│   └── json_compat.h              ArduinoJson 6 / 7 相容
+├── data/                          網頁前端（打包成 SPIFFS 映像）
+├── docs/                          腳位圖
+├── tools/gen_cjk_font.py          字型產生器
+├── partitions.csv                 3MB APP x2 + 9.375MB SPIFFS
+└── README.md
+```
+
+> **注意**：Arduino IDE 的「ESP32 Sketch Data Upload」與自動套用 `partitions.csv`
+> 都只認 **sketch 資料夾內**的 `data/` 與 `partitions.csv`。
+> 本專案將兩者放在專案根目錄以保持版面清爽，因此上傳前需先複製到 sketch 資料夾，
+> 或改用本文件提供的 `mkspiffs` + 網頁 OTA 流程（見「OTA 更新」）。
+
+---
+
 ## 分割表
 
-本專案在 sketch 根目錄附帶 `partitions.csv`，ESP32 核心 2.0.5+ 會自動使用：
+本專案在專案根目錄附帶 `partitions.csv`，內容如下：
 
 | 分割區 | 大小 |
 | --- | --- |
@@ -59,29 +90,41 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 | spiffs | 9.375 MB |
 | coredump | 64 KB |
 
-> OTA 更新失敗最常見的原因就是分割表不符。若 Arduino IDE 未採用本檔案，
-> 請確認 `partitions.csv` 與 `.ino` 位於同一資料夾，或改用 `Tools > Partition Scheme` 中
-> 名稱相近的 `3MB APP / 9MB SPIFFS` 選項。
+ESP32 核心 2.0.5+ 只會自動採用 **sketch 資料夾內**的 `partitions.csv`，
+請先複製一份再開啟 Arduino IDE：
+
+```powershell
+copy partitions.csv LILYGO-T-Display-S3_Nav\partitions.csv
+```
+
+若 IDE 仍未採用，可改用 `Tools > Partition Scheme` 中名稱相近的
+`3MB APP / 9MB SPIFFS` 選項。
+
+> OTA 更新失敗最常見的原因就是分割表不符。
 
 ---
 
 ## 編譯與上傳
 
-1. 以 Arduino IDE 開啟 `LILYGO-T-Display-S3_NAV.ino`。
+1. 以 Arduino IDE 開啟 `LILYGO-T-Display-S3_Nav/LILYGO-T-Display-S3_Nav.ino`。
 2. 選擇開發板與序列埠，按「上傳」。
 3. 首次燒錄後，SPIFFS 尚無網頁檔案，需上傳 `data/`：
+   - 先將前端複製到 sketch 資料夾：
+     ```powershell
+     xcopy /E /I /Y data LILYGO-T-Display-S3_Nav\data
+     ```
    - 安裝 **ESP32 Sketch Data Upload** 外掛（arduino-esp32fs-plugin），
-     或使用 `arduino-cli` / `mkspiffs` 自行產生映像。
-   - Arduino IDE：`Tools > ESP32 Sketch Data Upload`。
+     再於 Arduino IDE 執行 `Tools > ESP32 Sketch Data Upload`。
+   - 或使用 `mkspiffs` / `arduino-cli` 自行產生映像後，由網頁 OTA 上傳（見「OTA 更新」）。
 4. 重新啟動後：
-   - 若尚未設定 WiFi：裝置開啟 AP `T-Display-S3-NAV`，密碼 `nav12345`。
+   - 若尚未設定 WiFi：裝置開啟 AP `T-Display-S3-NAV`，預設密碼 `12345678`。
    - 連上 AP 後開啟 `http://192.168.4.1` 或 `http://nav.local` 設定家中 WiFi。
    - 連線成功後，裝置會以 `nav.local` 提供網頁（也可使用取得的 IP）。
 
-以 arduino-cli 編譯：
+以 arduino-cli 編譯（於專案根目錄執行）：
 
 ```powershell
-arduino-cli compile -b "esp32:esp32:lilygo_t_display_s3:CDCOnBoot=cdc,USBMode=hwcdc" .
+arduino-cli compile -b "esp32:esp32:lilygo_t_display_s3:CDCOnBoot=cdc,USBMode=hwcdc" LILYGO-T-Display-S3_Nav
 ```
 
 ---
@@ -150,12 +193,14 @@ OSRM 使用公開示範伺服器 `https://router.project-osrm.org`（僅供測�
 
 ### 韌體 `firmware.bin`
 
-Arduino IDE：`Sketch > Export Compiled Binary`，產生的 `.bin` 位於 sketch 資料夾。
-arduino-cli：`--output-dir` 指定輸出資料夾後取用 `*.ino.bin`。
+Arduino IDE：`Sketch > Export Compiled Binary`，產生的 `.bin` 位於 sketch 資料夾
+（`LILYGO-T-Display-S3_Nav/`）。
+arduino-cli：加上 `--output-dir` 指定輸出資料夾後取用 `*.ino.bin`。
 
 ### 檔案系統 `spiffs.bin`
 
-使用 `mkspiffs`（ESP32 版）產生，映像大小需與分割表一致（`0x960000` = 9.375 MB）：
+使用 `mkspiffs`（ESP32 版）於**專案根目錄**產生，映像大小需與分割表一致
+（`0x960000` = 9.375 MB）：
 
 ```bash
 mkspiffs -c data -p 256 -b 4096 -s 0x960000 spiffs.bin
@@ -163,28 +208,8 @@ mkspiffs -c data -p 256 -b 4096 -s 0x960000 spiffs.bin
 
 上傳完成後裝置會自動重新啟動。
 
----
-
-## 專案結構
-
-```
-LILYGO-T-Display-S3_NAV.ino   主程式：開機流程、按鍵派送、主迴圈
-config.h                      腳位、顏色、常數、AP / mDNS 設定
-partitions.csv                3MB APP x2 + 9.375MB SPIFFS
-tft_setup.h                   TFT_eSPI 設定（ST7789 / 8-bit 並列）
-display_ui.h / .cpp           狀態列、選單、資訊頁、導航轉盤、提示 / OTA 畫面
-ui_text.h / .cpp              16px 點陣字繪製（ASCII 半寬 + CJK 全寬）
-cjk_font.h                    自動產生的字型點陣（請勿手改）
-app_state.h / .cpp            共用狀態、格式化工具
-buttons.h / .cpp              GPIO0 / GPIO14 去彈跳、長按、連發
-wifi_manager.h / .cpp         STA / AP、mDNS、NVS 帳密
-nav_engine.h / .cpp           OSRM 查詢、方位角、剩餘里程、轉彎文字
-web_server.h / .cpp           REST API、靜態網頁、OTA
-json_compat.h                 ArduinoJson 6 / 7 相容
-data/                         網頁前端（上傳到 SPIFFS）
-tools/gen_cjk_font.py         字型產生器
-docs/                         腳位圖
-```
+> 若使用 Arduino IDE 內建的「ESP32 Sketch Data Upload」，`data/` 必須位於
+> `LILYGO-T-Display-S3_Nav/` 內（見「編譯與上傳」的複製指令）。
 
 ---
 
@@ -193,11 +218,15 @@ docs/                         腳位圖
 `cjk_font.h` 由 [GNU Unifont](https://unifoundry.com/unifont/) 16.0.04 點陣化產生，
 包含 ASCII、Big5 全部、GB2312 全部與程式碼中用到的字元（約 16,000 字）。
 
-重新產生（需要 `unifont.hex` 或 `.hex.gz`，可自動下載）：
+重新產生（需要 `unifont.hex` 或 `.hex.gz`，可自動下載；於專案根目錄執行）：
 
 ```bash
 python tools/gen_cjk_font.py --download
 ```
+
+產生器會自動尋找含 `.ino` 的 sketch 資料夾，掃描其中所有 `.c` / `.h` / `.cpp` / `.ino`
+使用到的字元，並將結果輸出為
+`LILYGO-T-Display-S3_Nav/cjk_font.h`（可用 `--out` 指定其他路徑）。
 
 GNU Unifont 採雙授權，可擇一遵循：
 
@@ -215,11 +244,11 @@ Source Han Sans 等 OFL 字型重新產生。
 | 症狀 | 處理 |
 | --- | --- |
 | 螢幕全黑 | 確認 `PIN_POWER_ON`（GPIO15）為 HIGH；確認 `tft_setup.h` 有被載入（TFT_eSPI ≥ 2.5.31） |
-| 中文顯示空心方塊 | 該字不在字型檔內；重新執行 `tools/gen_cjk_font.py`（會掃描原始碼字元） |
-| 網頁 404 / 空白 | `data/` 尚未上傳到 SPIFFS；重新執行 Sketch Data Upload |
+| 中文顯示空心方塊 | 該字不在字型檔內；重新執行 `tools/gen_cjk_font.py`（會掃描 sketch 原始碼字元） |
+| 網頁 404 / 空白 | `data/` 尚未上傳到 SPIFFS；複製到 sketch 資料夾後重新執行 Sketch Data Upload |
+| 分割表未生效 / OTA 失敗 | 將 `partitions.csv` 複製到 `LILYGO-T-Display-S3_Nav/`，或手動選擇 `3MB APP / 9MB SPIFFS` |
 | `nav.local` 無法開啟 | 部分 Android / Windows 不支援 mDNS，改用裝置 IP |
-| WiFi 一直連不上 | 確認 2.4GHz、密碼正確；必要時清除設定回到 AP 模式 |
-| OTA 失敗 | 確認分割表為 3MB APP x2 + 9.375MB SPIFFS；`firmware.bin` 需為本專案產物 |
+| WiFi 一直連不上 | 確認 2.4GHz、密碼正確；必要時清除設定回到 AP 模式（預設密碼 `12345678`） |
 | 導航沒有箭頭 | 尚未規劃路線，或瀏覽器沒有送出位置；先在網頁按「規劃路線」 |
 | 電池顯示 USB | 未接電池或電壓 > 4.32V（USB 供電時的正常現象） |
 

@@ -58,7 +58,7 @@
 // WiFi / AP
 // ---------------------------------------------------------------------------
 #define AP_SSID              "T-Display-S3-NAV"
-#define AP_PASS              "nav12345"       // 至少 8 碼
+#define AP_PASS              "12345678"       // 至少 8 碼
 #define MDNS_HOST            "nav"            // http://nav.local
 #define WIFI_CONNECT_MS      15000            // 單次連線等待
 #define WIFI_RETRY_MS        20000            // STA 斷線重試間隔
