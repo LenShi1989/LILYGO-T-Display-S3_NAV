@@ -1,0 +1,41 @@
+// ============================================================================
+//  tft_setup.h — TFT_eSPI 設定（sketch 資料夾版）
+//  TFT_eSPI >= 2.5.31 會自動載入此檔，因此不必修改函式庫的 User_Setup.h。
+//  面板：ST7789 170x320，8-bit 並列介面（LILYGO T-Display-S3）
+// ============================================================================
+#define USER_SETUP_ID 206
+
+#define ST7789_DRIVER
+#define INIT_SEQUENCE_3          // 較新的面板初始化序列，畫面更乾淨
+
+#define CGRAM_OFFSET
+#define TFT_RGB_ORDER TFT_RGB
+#define TFT_INVERSION_ON
+
+#define TFT_PARALLEL_8_BIT
+
+#define TFT_WIDTH  170
+#define TFT_HEIGHT 320
+
+#define TFT_CS   6
+#define TFT_DC   7
+#define TFT_RST  5
+#define TFT_WR   8
+#define TFT_RD   9
+
+#define TFT_D0   39
+#define TFT_D1   40
+#define TFT_D2   41
+#define TFT_D3   42
+#define TFT_D4   45
+#define TFT_D5   46
+#define TFT_D6   47
+#define TFT_D7   48
+
+#define TFT_BL   38
+#define TFT_BACKLIGHT_ON HIGH
+
+// 只載入會用到的字型，節省 Flash
+#define LOAD_GLCD
+#define LOAD_FONT2
+#define LOAD_FONT4

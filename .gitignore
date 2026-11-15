@@ -1,0 +1,28 @@
+# 建置產物
+build/
+.pio/
+.pioenvs/
+.piolibdeps/
+*.bin
+*.elf
+*.map
+
+# Arduino / IDE
+.vscode/
+.idea/
+*.ino.bin
+*.ino.elf
+
+# Python
+__pycache__/
+*.pyc
+
+# 作業系統
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 產生的字型快取（cjk_font.h 需提交）
+unifont.hex
+unifont.hex.gz
+unifont.pkl
