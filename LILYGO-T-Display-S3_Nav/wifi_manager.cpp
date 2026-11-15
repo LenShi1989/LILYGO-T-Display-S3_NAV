@@ -28,9 +28,9 @@ static String hwMac() {
   uint64_t v = ESP.getEfuseMac();
   char buf[18];
   snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-           (unsigned)((v >> 40) & 0xFF), (unsigned)((v >> 32) & 0xFF),
-           (unsigned)((v >> 24) & 0xFF), (unsigned)((v >> 16) & 0xFF),
-           (unsigned)((v >> 8) & 0xFF), (unsigned)(v & 0xFF));
+           (unsigned)(v & 0xFF), (unsigned)((v >> 8) & 0xFF),
+           (unsigned)((v >> 16) & 0xFF), (unsigned)((v >> 24) & 0xFF),
+           (unsigned)((v >> 32) & 0xFF), (unsigned)((v >> 40) & 0xFF));
   return String(buf);
 }
 
