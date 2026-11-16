@@ -3,7 +3,7 @@
 ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁控制台、OSRM 路線導航與 OTA 更新。
 
 - 開發板：**LILYGO T-Display-S3**（ESP32-S3，16MB Flash / 8MB PSRAM，ST7789 170×320 8-bit 並列）
-- 韌體版本：**1.1.0**（`FW_VERSION`，定義於 `config.h`）
+- 韌體版本：**1.2.0**（`FW_VERSION`，定義於 `config.h`）
 - 操作：**GPIO0**（板載 BOOT）＝選擇、**GPIO14**（外接按鍵對 GND）＝確認，長按 0.8 秒返回
 - 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`（SSID `ESP32-S3_NAV-<MAC後4碼>`、預設密碼 `12345678`）
 - WiFi：**STA + AP 共存**，STA 連線成功後 AP 熱點仍保留，可隨時以手機直接連入設定
@@ -17,7 +17,7 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 | 狀態列 | 左上：WiFi SSID / 狀態；右上：WiFi 訊號圖示、電量百分比、電池圖示（USB 供電時顯示 USB） |
 | 主選單 | 系統狀態、MAP導航、關於本機（清單可捲動，最多同時顯示 5 列） |
 | 系統狀態 | WiFi 連線資訊（兩頁：連線 / 熱點，長 SSID 不截斷）、系統狀態（兩頁）、顯示設定、關於本機 |
-| MAP導航 | 北向朝上的方位轉盤（東南西北箭頭 + N/E/S/W）、轉彎指示、距下一動作點距離、剩餘里程 / 時間、目的地、步驟進度、目前方位角 |
+| MAP導航 | HUD 式箭頭導引（轉彎箭頭圖示、距離、路線箭頭、目前方位）、轉彎指示、剩餘里程 / 時間、步驟進度 |
 | 網頁 | 系統狀態（含 SPIFFS 目錄與容量）、WiFi 掃描 / 連線 / 清除、Leaflet 地圖 + OSRM 路線、地址搜尋（裝置代理 Nominatim）、OTA 更新 |
 
 裝置本身沒有 GPS：請以手機 / 電腦開啟網頁地圖，將瀏覽器定位（HTTPS 或 localhost 才可用）
@@ -59,7 +59,7 @@ LILYGO-T-Display-S3_NAV/           專案根目錄（Git repository）
 │   ├── LILYGO-T-Display-S3_Nav.ino  主程式（資料夾與 .ino 必須同名）
 │   ├── config.h                   腳位、顏色、AP / mDNS 設定
 │   ├── tft_setup.h                TFT_eSPI 設定（ST7789 / 8-bit 並列）
-│   ├── display_ui.h / .cpp        狀態列、選單、資訊頁、導航轉盤、提示 / OTA 畫面
+│   ├── display_ui.h / .cpp        狀態列、選單、資訊頁、HUD 導航、提示 / OTA 畫面
 │   ├── ui_text.h / .cpp           16px 點陣字繪製（ASCII 半寬 + CJK 全寬）
 │   ├── cjk_font.h                 自動產生的字型點陣（請勿手改）
 │   ├── app_state.h / .cpp         共用狀態、格式化工具
@@ -265,6 +265,7 @@ Source Han Sans 等 OFL 字型重新產生。
 
 | 版本 | 日期 | 重點 |
 | --- | --- | --- |
+| **1.2.0** | 2026-11-17 | MAP 導航改為 HUD 式箭頭導引（轉彎箭頭圖示、路線箭頭、大字距離）；WiFi 連線資訊文字統一對齊 |
 | **1.1.0** | 2026-11-16 | WiFi 連線資訊改為兩頁（長 SSID 不截斷）；MAP 轉盤加入東南西北箭頭與目前方位；網頁地址搜尋改由裝置代理 Nominatim（支援門牌降級）；新增 `tools/make_spiffs.bat` / `.ps1` 產生 `build/spiffs.bin` |
 | 1.0.0 | 2026-11 | 初版：選單、狀態列、WiFi STA + AP 共存、OSRM 導航、網頁控制台、OTA 更新 |
 
