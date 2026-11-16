@@ -510,46 +510,113 @@ function locateMe() {
   );
 }
 
+function normalizeAddress(q) {
+  return q
+    .replace(/[\uFF10-\uFF19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[\u3000\s]+/g, ' ')
+    .trim();
+}
+
+function placeTitle(item) {
+  const name = (item.name || '').trim();
+  if (name) return name;
+  const display = (item.display || item.display_name || '').trim();
+  return display.split(',')[0] || '未命名地點';
+}
+
+function placeAddress(item) {
+  const display = (item.display || item.display_name || '').trim();
+  return display || '—';
+}
+
+async function searchAddress(q) {
+  // 優先由裝置代理查詢：手機只連 AP（沒有網際網路）時也能搜尋地址
+  try {
+    const data = await api('/api/geocode?q=' + encodeURIComponent(q));
+    return {
+      results: data.results || [],
+      approx: !!data.approx,
+      used: data.used || q
+    };
+  } catch (err) {
+    // 裝置沒有 STA 網路時，退回瀏覽器直接查詢 Nominatim
+    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8' +
+                '&accept-language=zh-TW&countrycodes=tw&q=' + encodeURIComponent(q);
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const list = await res.json();
+    return {
+      results: (Array.isArray(list) ? list : []).map((it) => ({
+        display: it.display_name,
+        name: it.name,
+        lat: it.lat,
+        lon: it.lon
+      })),
+      approx: false,
+      used: q
+    };
+  }
+}
+
 async function doSearch() {
-  const q = $('search').value.trim();
-  if (!q) return;
+  const q = normalizeAddress($('search').value);
+  if (!q) { $('search').focus(); return; }
+
   const box = $('searchResults');
+  const btn = $('btnSearch');
 
   if (!map) {
-    box.innerHTML = '<div class="mini">地圖未載入（需要網際網路）。</div>';
+    box.innerHTML = '<div class="mini">地圖未載入（Leaflet CDN 需要網際網路）。</div>';
     return;
   }
 
+  btn.disabled = true;
   box.innerHTML = '<div class="mini">搜尋中…</div>';
 
   try {
-    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6' +
-                '&accept-language=zh-TW&q=' + encodeURIComponent(q);
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    const list = await res.json();
-
-    if (!Array.isArray(list) || !list.length) {
-      box.innerHTML = '<div class="mini">找不到地點。</div>';
+    const { results, approx, used } = await searchAddress(q);
+    if (!results.length) {
+      box.innerHTML = '<div class="mini">找不到「' + escapeHtml(q) +
+        '」。請嘗試加上路名，例如「桃園市平鎮區中正路16號」。</div>';
       return;
     }
 
-    box.innerHTML = list.map((it, i) =>
-      '<button class="search-hit" data-i="' + i + '">' + escapeHtml(it.display_name) + '</button>'
-    ).join('');
+    box.innerHTML = results.map((it, i) =>
+      '<button class="search-hit" data-i="' + i + '">' +
+        '<span class="hit-name">' + escapeHtml(placeTitle(it)) + '</span>' +
+        '<span class="hit-addr">' + escapeHtml(placeAddress(it)) + '</span>' +
+      '</button>').join('') +
+      (approx ? '<div class="mini search-hint">「' + escapeHtml(used) +
+        '」查無完整門牌，已顯示最近的道路／地區。</div>' : '');
 
-    box.querySelectorAll('.search-hit').forEach((btn) => {
-      btn.onclick = () => {
-        const it = list[+btn.dataset.i];
-        const p = L.latLng(parseFloat(it.lat), parseFloat(it.lon));
+    box.querySelectorAll('.search-hit').forEach((el) => {
+      el.onclick = () => {
+        const it = results[+el.dataset.i];
+        const lat = parseFloat(it.lat);
+        const lon = parseFloat(it.lon);
+        if (!isFinite(lat) || !isFinite(lon)) return;
+
+        const p = L.latLng(lat, lon);
+        const title = placeTitle(it);
         initMap();
-        if (mode === 'start') setStart(p);
-        else setDest(p, it.display_name.split(',')[0]);
-        map.setView(p, 14);
+
+        if (mode === 'start') {
+          setStart(p);
+          setMsg($('routeMsg'), '已設定起點「' + title + '」。');
+        } else {
+          setDest(p, title);
+          setMsg($('routeMsg'), '已設定終點「' + title + '」，請設定起點或按「定位」。');
+        }
+
+        map.setView(p, 16);
         box.innerHTML = '';
       };
     });
   } catch (err) {
-    box.innerHTML = '<div class="mini">搜尋失敗（需要網際網路，AP 模式下通常無法使用）。</div>';
+    box.innerHTML = '<div class="mini">搜尋失敗：' + escapeHtml(err.message) +
+      '（裝置與瀏覽器都無法連上 Nominatim，請確認網路）</div>';
+  } finally {
+    btn.disabled = false;
   }
 }
 

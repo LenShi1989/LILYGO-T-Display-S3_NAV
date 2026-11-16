@@ -230,10 +230,14 @@
             <div class="map-toolbar">
               <input
                 id="search"
-                type="text"
-                placeholder="搜尋地點（Nominatim）"
+                type="search"
+                autocomplete="off"
+                placeholder="搜尋地址，例如：桃園市平鎮區中正路16號"
               />
               <button id="btnSearch" class="btn">搜尋</button>
+            </div>
+            <div class="search-hint mini">
+              可直接輸入門牌；門牌未建檔時會自動顯示最近的道路或地區。
             </div>
             <div id="searchResults" class="search-results"></div>
             <div id="map"></div>

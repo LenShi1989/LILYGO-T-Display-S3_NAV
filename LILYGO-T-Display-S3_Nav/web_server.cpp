@@ -1,9 +1,11 @@
 #include "web_server.h"
 
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <SPIFFS.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WebServer.h>
 
 #include "app_state.h"
@@ -50,6 +52,197 @@ void sendError(int code, const char *msg) {
 String jsonBody() {
   String body = server.arg("plain");
   return body;
+}
+
+// ---------------------------------------------------------------------------
+// /api/geocode — Nominatim 位址搜尋代理
+//
+// 由裝置（STA 端）代為查詢，手機只連 AP 時也能搜尋地址。
+// 針對台灣地址做兩段降級：
+//   1. 完整地址（含門牌）
+//   2. 去掉門牌（16號 / 16之1號）
+//   3. 再去掉巷弄（16巷 / 5弄）
+// 門牌未建檔時仍會回傳最近的道路 / 地區。
+// ---------------------------------------------------------------------------
+String urlEncode(const String &in) {
+  static const char *hex = "0123456789ABCDEF";
+  String out;
+  out.reserve(in.length() * 3 + 8);
+
+  for (size_t i = 0; i < in.length(); i++) {
+    uint8_t c = (uint8_t)in[i];
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' ||
+        c == '~') {
+      out += (char)c;
+    } else {
+      out += '%';
+      out += hex[c >> 4];
+      out += hex[c & 0x0F];
+    }
+  }
+  return out;
+}
+
+bool nominatimSearch(const String &query, String &body, String &err) {
+  String url =
+      "https://nominatim.openstreetmap.org/search?format=jsonv2"
+      "&addressdetails=0&limit=6&accept-language=zh-TW"
+      "&countrycodes=tw&q=";
+  url += urlEncode(query);
+
+  WiFiClientSecure tls;
+  tls.setInsecure();
+  tls.setHandshakeTimeout(10);
+
+  HTTPClient http;
+  http.setTimeout(12000);
+  http.setConnectTimeout(9000);
+  http.setReuse(false);
+  http.setUserAgent("LILYGO-T-Display-S3-NAV/1.0 (+http://nav.local)");
+
+  if (!http.begin(tls, url)) {
+    err = "無法建立 HTTPS 連線";
+    return false;
+  }
+  int code = http.GET();
+  if (code != 200) {
+    err = String("Nominatim HTTP ") + code;
+    http.end();
+    return false;
+  }
+
+  body = http.getString();
+  http.end();
+  return body.length() > 0;
+}
+
+// 從 suffix 位置往前跳過門牌數字（支援 16、16-1、16之1）
+int skipNumberBack(const String &s, int i) {
+  while (i > 0) {
+    char c = s[i - 1];
+    if ((c >= '0' && c <= '9') || c == '-') {
+      i--;
+      continue;
+    }
+    // UTF-8「之」(E4 B9 8B)
+    if (i >= 3 && (uint8_t)s[i - 3] == 0xE4 && (uint8_t)s[i - 2] == 0xB9 &&
+        (uint8_t)s[i - 1] == 0x8B) {
+      i -= 3;
+      continue;
+    }
+    break;
+  }
+  return i;
+}
+
+// 移除結尾的門牌：桃園市平鎮區中正路16號 -> 桃園市平鎮區中正路
+String stripHouseNumber(const String &src) {
+  int pos = src.lastIndexOf("號");
+  if (pos <= 0) return "";
+
+  int i = skipNumberBack(src, pos);
+  if (i >= pos) return "";
+
+  String out = src.substring(0, i);
+  out.trim();
+  return (out.length() >= 4) ? out : String("");
+}
+
+// 移除結尾的巷 / 弄：中正路16巷5弄 -> 中正路16巷
+String stripLane(const String &src) {
+  int pos = src.lastIndexOf("巷");
+  int pos2 = src.lastIndexOf("弄");
+  if (pos2 > pos) pos = pos2;
+  if (pos <= 0) return "";
+
+  int i = skipNumberBack(src, pos);
+  if (i >= pos) return "";
+
+  String out = src.substring(0, i);
+  out.trim();
+  return (out.length() >= 4) ? out : String("");
+}
+
+void handleGeocode() {
+  String raw = server.arg("q");
+  raw.trim();
+  if (raw.length() < 2 || raw.length() > 120) {
+    sendError(400, "請輸入 2–120 字元的地址");
+    return;
+  }
+
+  String queries[3];
+  uint8_t nq = 0;
+  auto addQuery = [&](const String &s) {
+    String t = s;
+    t.trim();
+    if (t.length() < 2) return;
+    for (uint8_t i = 0; i < nq; i++) {
+      if (queries[i] == t) return;
+    }
+    if (nq < 3) queries[nq++] = t;
+  };
+
+  addQuery(raw);
+  String s1 = stripHouseNumber(raw);
+  addQuery(s1);
+  String s2 = stripLane(s1.length() ? s1 : raw);
+  addQuery(s2);
+  addQuery(stripLane(s2));
+
+  String used, body, err;
+  bool got = false;
+
+  for (uint8_t i = 0; i < nq; i++) {
+    if (i > 0) delay(1100);   // Nominatim 使用政策：最多 1 次 / 秒
+
+    if (!nominatimSearch(queries[i], body, err)) {
+      sendError(502, err.c_str());
+      return;
+    }
+    if (body.indexOf("\"lat\"") >= 0) {
+      used = queries[i];
+      got = true;
+      break;
+    }
+  }
+
+  NAV_JSON_DOC(doc, 8192);
+  doc["ok"]    = true;
+  doc["query"] = raw;
+  doc["used"]  = got ? used : queries[nq - 1];
+  doc["approx"] = got ? (used != raw) : true;
+  JsonArray arr = doc.createNestedArray("results");
+
+  if (got) {
+    NAV_JSON_DOC(filter, 384);
+    filter[0]["display_name"] = true;
+    filter[0]["name"]         = true;
+    filter[0]["type"]         = true;
+    filter[0]["lat"]          = true;
+    filter[0]["lon"]          = true;
+
+    NAV_JSON_DOC(list, 8192);
+    DeserializationError e =
+        deserializeJson(list, body, DeserializationOption::Filter(filter));
+    if (e) {
+      sendError(502, "Nominatim 回應解析失敗");
+      return;
+    }
+
+    for (JsonObject o : list.as<JsonArray>()) {
+      JsonObject r = arr.createNestedObject();
+      r["display"] = (const char *)(o["display_name"] | "");
+      r["name"]    = (const char *)(o["name"] | "");
+      r["type"]    = (const char *)(o["type"] | "");
+      r["lat"]     = (const char *)(o["lat"] | "");
+      r["lon"]     = (const char *)(o["lon"] | "");
+    }
+  }
+
+  doc["count"] = arr.size();
+  sendJsonDoc(doc);
 }
 
 // ---------------------------------------------------------------------------
@@ -528,6 +721,7 @@ void begin() {
 
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/spiffs", HTTP_GET, handleSpiffs);
+  server.on("/api/geocode", HTTP_GET, handleGeocode);
 
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
   server.on("/api/wifi", HTTP_POST, handleWifiSave);

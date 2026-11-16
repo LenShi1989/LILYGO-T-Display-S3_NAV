@@ -282,6 +282,7 @@ input[type="file"] {
   min-width: 0;
 }
 .map-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+#search { flex: 1 1 auto; min-width: 0; }
 #map {
   height: 440px;
   border-radius: 10px;
@@ -291,9 +292,14 @@ input[type="file"] {
 }
 .map-modes { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
+.search-hint { margin: 0 0 8px; }
+
 .search-results { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .search-results:empty { display: none; }
 .search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   text-align: left;
   background: #0e1728;
   border: 1px solid var(--border);
@@ -304,6 +310,8 @@ input[type="file"] {
   font-size: 0.85rem;
 }
 .search-hit:hover { border-color: var(--accent-dim); }
+.search-hit .hit-name { font-weight: 600; }
+.search-hit .hit-addr { color: var(--muted); font-size: 0.76rem; line-height: 1.35; }
 
 .nav-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
