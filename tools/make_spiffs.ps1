@@ -1,5 +1,5 @@
 # =============================================================================
-#  make_spiffs.ps1 - Build spiffs.bin from LILYGO-T-Display-S3_Nav/data
+#  make_spiffs.ps1 - Build + verify spiffs.bin from LILYGO-T-Display-S3_Nav/data
 #
 #  Default output:
 #    <repo>\LILYGO-T-Display-S3_Nav\build\spiffs.bin
@@ -7,26 +7,29 @@
 #  Usage (from the repo root):
 #    powershell -ExecutionPolicy Bypass -File tools\make_spiffs.ps1
 #    powershell -ExecutionPolicy Bypass -File tools\make_spiffs.ps1 D:\out\spiffs.bin
+#    powershell -ExecutionPolicy Bypass -File tools\make_spiffs.ps1 -Flash
 #
 #  Or simply double-click tools\make_spiffs.bat.
 #
-#  mkspiffs lookup order:
-#    1. MKSPIFFS environment variable
-#    2. mkspiffs found on PATH
-#    3. mkspiffs bundled with the ESP32 core in Arduino15
+#  The image size and the flash offset are read from partitions.csv, so the
+#  generated file always matches the installed partition table. The result is
+#  verified (exact size, SPIFFS magic, file list) before it is reported as ok.
 # =============================================================================
 param(
-  [string]$OutFile = ''
+  [Parameter(Position = 0)][string]$OutFile = '',
+  [string]$PartitionCsv = '',
+  [switch]$Flash,
+  [string]$Port = '',
+  [int]$Baud = 921600
 )
 
 $ErrorActionPreference = 'Stop'
 
-$Root       = Split-Path -Parent $PSScriptRoot
-$DataDir    = Join-Path $Root 'LILYGO-T-Display-S3_Nav\data'
-$Default    = Join-Path $Root 'LILYGO-T-Display-S3_Nav\build\spiffs.bin'
-$SpiffsSize = '0x960000'   # 9.375 MB, must match partitions.csv
-$BlockSize  = '4096'
-$PageSize   = '256'
+. (Join-Path $PSScriptRoot 'spiffs_common.ps1')
+
+$Root    = Get-RepoRootPath
+$DataDir = Join-Path $Root 'LILYGO-T-Display-S3_Nav\data'
+$Default = Join-Path $Root 'LILYGO-T-Display-S3_Nav\build\spiffs.bin'
 
 if ([string]::IsNullOrWhiteSpace($OutFile)) {
   $OutFile = $Default
@@ -34,38 +37,32 @@ if ([string]::IsNullOrWhiteSpace($OutFile)) {
   $OutFile = Join-Path $Root $OutFile
 }
 
-function Find-Mkspiffs {
-  if ($env:MKSPIFFS -and (Test-Path -LiteralPath $env:MKSPIFFS)) {
-    return (Resolve-Path -LiteralPath $env:MKSPIFFS).Path
-  }
-
-  $cmd = Get-Command mkspiffs -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
-
-  $bases = @()
-  if ($env:ARDUINO15)    { $bases += $env:ARDUINO15 }
-  if ($env:LOCALAPPDATA) { $bases += (Join-Path $env:LOCALAPPDATA 'Arduino15') }
-  if ($env:USERPROFILE) {
-    $bases += (Join-Path $env:USERPROFILE 'AppData\Local\Arduino15')
-    $bases += (Join-Path $env:USERPROFILE '.arduino15')
-  }
-
-  foreach ($base in ($bases | Select-Object -Unique)) {
-    $dir = Join-Path $base 'packages\esp32\tools\mkspiffs'
-    if (-not (Test-Path -LiteralPath $dir)) { continue }
-
-    $exe = Get-ChildItem -LiteralPath $dir -Recurse -File -Filter 'mkspiffs.exe' -ErrorAction SilentlyContinue |
-      Sort-Object FullName -Descending |
-      Select-Object -First 1
-    if ($exe) { return $exe.FullName }
-  }
-  return $null
-}
-
 if (-not (Test-Path -LiteralPath $DataDir)) {
   throw "Data folder not found: $DataDir"
 }
 
+# --- partition layout -------------------------------------------------------
+if ($PartitionCsv) {
+  if (-not [System.IO.Path]::IsPathRooted($PartitionCsv)) {
+    $PartitionCsv = Join-Path $Root $PartitionCsv
+  }
+  if (-not (Test-Path -LiteralPath $PartitionCsv)) {
+    throw "Partition CSV not found: $PartitionCsv"
+  }
+  $part = Get-SpiffsPartition -CsvPath $PartitionCsv
+  if (-not $part) { throw "No 'spiffs' row in $PartitionCsv" }
+} else {
+  $part = Find-SpiffsPartition -RepoRoot $Root
+}
+
+$SpiffsSize = [uint64]$part.Size
+if ($null -ne $part.Offset) {
+  $offsetText = '0x{0:X}' -f [uint64]$part.Offset
+} else {
+  $offsetText = '(not set in CSV)'
+}
+
+# --- tools ------------------------------------------------------------------
 $mkspiffs = Find-Mkspiffs
 if (-not $mkspiffs) {
   throw @"
@@ -80,14 +77,20 @@ if (-not (Test-Path -LiteralPath $outDir)) {
   New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 }
 
-Write-Host ""
-Write-Host "mkspiffs : $mkspiffs"
-Write-Host "source   : $DataDir"
-Write-Host "image    : $SpiffsSize (block $BlockSize / page $PageSize)"
-Write-Host "output   : $OutFile"
-Write-Host ""
+Write-Host ''
+Write-Host 'LILYGO T-Display-S3 NAV - SPIFFS image'
+Write-Host ('  mkspiffs  : {0}' -f $mkspiffs)
+Write-Host ('  source    : {0}' -f $DataDir)
+Write-Host ('  partition : {0}, offset {1}, size {2}' -f $part.Name, $offsetText, (Format-ImageSize $SpiffsSize))
+Write-Host ('  csv       : {0}' -f $part.CsvPath)
+Write-Host ('  output    : {0}' -f $OutFile)
+Write-Host ''
 
-& $mkspiffs -c $DataDir -p $PageSize -b $BlockSize -s $SpiffsSize $OutFile
+Write-Host ('  block {0} / page {1}' -f $script:SpiffsBlockSize, $script:SpiffsPageSize)
+
+# --- build ------------------------------------------------------------------
+& $mkspiffs -c $DataDir -p $script:SpiffsPageSize -b $script:SpiffsBlockSize `
+  -s ('0x{0:X}' -f $SpiffsSize) $OutFile
 if ($LASTEXITCODE -ne 0) {
   throw "mkspiffs failed with exit code $LASTEXITCODE"
 }
@@ -96,6 +99,44 @@ if (-not (Test-Path -LiteralPath $OutFile)) {
 }
 
 $size = (Get-Item -LiteralPath $OutFile).Length
-Write-Host ""
-Write-Host ("Done: {0} ({1:N0} bytes)" -f $OutFile, $size)
-Write-Host "Upload it from the web UI: OTA update > spiffs.bin"
+if ($size -ne $SpiffsSize) {
+  throw ("mkspiffs produced {0:N0} bytes, but the spiffs partition is {1:N0} bytes" -f $size, $SpiffsSize)
+}
+
+# --- verify -----------------------------------------------------------------
+$problems = @()
+$problems += @(Test-SpiffsImage -Image $OutFile -Size $SpiffsSize)
+$problems += @(Test-SpiffsContents -Mkspiffs $mkspiffs -Image $OutFile -Size $SpiffsSize -DataDir $DataDir)
+
+if ($problems.Count -gt 0) {
+  Write-Host ''
+  Write-Host 'Image validation FAILED:' -ForegroundColor Red
+  foreach ($p in $problems) { Write-Host ("  - " + $p) -ForegroundColor Red }
+  throw 'spiffs.bin does not match the partition layout / data folder.'
+}
+
+$fileCount = (Get-SourceFileList -DataDir $DataDir).Count
+Write-Host ''
+Write-Host ('Verified: {0} bytes, SPIFFS magic ok, {1} file(s) match data/' -f $size, $fileCount) -ForegroundColor Green
+
+# --- flash hints ------------------------------------------------------------
+if ($null -ne $part.Offset) {
+  $esptool = Find-Esptool
+  Write-Host ''
+  Write-Host 'Flash over USB (whole 9.375 MB file, offset from partitions.csv):'
+  Write-Host '  tools\flash_spiffs.bat'
+  Write-Host '  (or)'
+  if ($esptool) {
+    Write-Host ('  "{0}" --chip esp32s3 --port COM5 --baud 921600 write-flash 0x{1:X} "{2}"' -f $esptool, [uint64]$part.Offset, $OutFile)
+  } else {
+    Write-Host ('  esptool --chip esp32s3 --port COM5 --baud 921600 write-flash 0x{0:X} "{1}"' -f [uint64]$part.Offset, $OutFile)
+  }
+}
+Write-Host ''
+Write-Host 'Or upload it from the web UI: OTA update > file system (spiffs.bin).'
+
+if ($Flash) {
+  Write-Host ''
+  & (Join-Path $PSScriptRoot 'flash_spiffs.ps1') -Image $OutFile -Port $Port -Baud $Baud
+  exit $LASTEXITCODE
+}
