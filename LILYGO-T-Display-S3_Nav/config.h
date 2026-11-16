@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 #define FW_NAME       "LILYGO T-Display-S3 NAV"
 #define FW_SHORT      "NAV"
-#define FW_VERSION    "1.1.0"
+#define FW_VERSION    "1.2.0"
 #define FW_BUILD      __DATE__ " " __TIME__
 #define FW_BOARD      "LILYGO T-Display-S3"
 
@@ -72,6 +72,7 @@
 #define OSRM_BASE            "https://router.project-osrm.org"
 #define OSRM_PROFILE         "driving"
 #define NAV_MAX_STEPS        64
+#define NAV_MAX_GEO_PTS      1024              // 裝置端 HUD 使用的路線點上限（抽樣）
 #define NAV_ARRIVE_RADIUS_M  25.0f            // 距離路徑點多近視為通過
 #define NAV_REFRESH_MS       1000
 
