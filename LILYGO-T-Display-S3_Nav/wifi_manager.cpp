@@ -76,11 +76,13 @@ void begin() {
   WiFi.persistent(false);
   WiFi.setHostname(MDNS_HOST);
   WiFi.setAutoReconnect(true);
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
   s_apSsid = makeApSsid();
 
+  // STA / AP 共存：AP 一律啟動，即使之後 STA 連線成功也保留熱點
+  startAp();
+
   if (!s_hasCreds) {
-    startAp();
     snapshot();
     return;
   }
@@ -98,8 +100,7 @@ void begin() {
                   WiFi.localIP().toString().c_str());
     ensureMdns();
   } else {
-    Serial.println("[wifi] 連線失敗，啟動 AP 模式");
-    startAp();
+    Serial.println("[wifi] 連線失敗，保留 AP 模式");
   }
   Ui::closeModal();
   snapshot();
@@ -188,7 +189,7 @@ bool connect(const String &ssid, const String &pass, String &err) {
 
   Ui::modal("WiFi 連線中", ssid.c_str(), "最多等待 15 秒");
 
-  if (!s_dnsActive) WiFi.mode(WIFI_STA);
+  if (!s_dnsActive) startAp();
   WiFi.begin(ssid.c_str(), pass.c_str());
 
   uint32_t start = millis();
@@ -200,7 +201,6 @@ bool connect(const String &ssid, const String &pass, String &err) {
   if (WiFi.status() != WL_CONNECTED) {
     err = "連線逾時，請確認密碼或訊號強度";
     WiFi.disconnect(false, false);
-    if (!s_dnsActive) startAp();
     Ui::closeModal();
     return false;
   }
@@ -228,7 +228,8 @@ void forget() {
   s_ssid = "";
   s_pass = "";
   s_hasCreds = false;
-  WiFi.disconnect(true, true);
+  // 只關閉 STA，保留 AP 直到重新啟動（避免清除設定後立即斷線）
+  WiFi.disconnect(false, true);
   Serial.println("[wifi] 已清除連線設定");
 }
 
