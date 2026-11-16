@@ -3,6 +3,7 @@
 ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁控制台、OSRM 路線導航與 OTA 更新。
 
 - 開發板：**LILYGO T-Display-S3**（ESP32-S3，16MB Flash / 8MB PSRAM，ST7789 170×320 8-bit 並列）
+- 韌體版本：**1.1.0**（`FW_VERSION`，定義於 `config.h`）
 - 操作：**GPIO0**（板載 BOOT）＝選擇、**GPIO14**（外接按鍵對 GND）＝確認，長按 0.8 秒返回
 - 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`（SSID `ESP32-S3_NAV-<MAC後4碼>`、預設密碼 `12345678`）
 - WiFi：**STA + AP 共存**，STA 連線成功後 AP 熱點仍保留，可隨時以手機直接連入設定
@@ -15,9 +16,9 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 | --- | --- |
 | 狀態列 | 左上：WiFi SSID / 狀態；右上：WiFi 訊號圖示、電量百分比、電池圖示（USB 供電時顯示 USB） |
 | 主選單 | 系統狀態、MAP導航、關於本機（清單可捲動，最多同時顯示 5 列） |
-| 系統狀態 | WiFi 連線資訊、系統狀態（兩頁）、顯示設定、關於本機 |
-| MAP導航 | 北向朝上的方位箭頭轉盤、轉彎指示、距下一動作點距離、剩餘里程 / 時間、目的地、步驟進度 |
-| 網頁 | 系統狀態（含 SPIFFS 目錄與容量）、WiFi 掃描 / 連線 / 清除、Leaflet 地圖 + OSRM 路線、OTA 更新 |
+| 系統狀態 | WiFi 連線資訊（兩頁：連線 / 熱點，長 SSID 不截斷）、系統狀態（兩頁）、顯示設定、關於本機 |
+| MAP導航 | 北向朝上的方位轉盤（東南西北箭頭 + N/E/S/W）、轉彎指示、距下一動作點距離、剩餘里程 / 時間、目的地、步驟進度、目前方位角 |
+| 網頁 | 系統狀態（含 SPIFFS 目錄與容量）、WiFi 掃描 / 連線 / 清除、Leaflet 地圖 + OSRM 路線、地址搜尋（裝置代理 Nominatim）、OTA 更新 |
 
 裝置本身沒有 GPS：請以手機 / 電腦開啟網頁地圖，將瀏覽器定位（HTTPS 或 localhost 才可用）
 或「模擬位置」送到裝置；裝置再依 OSRM 路線計算方位角與剩餘里程。
@@ -70,7 +71,9 @@ LILYGO-T-Display-S3_NAV/           專案根目錄（Git repository）
 │   └── data/                      網頁前端（打包成 SPIFFS 映像）
 ├── docs/                          腳位圖
 ├── tools/gen_cjk_font.py          字型產生器
-├── tools/make_spiffs.sh           產生 spiffs.bin（mkspiffs 包裝）
+├── tools/make_spiffs.bat          產生 spiffs.bin（Windows，雙擊即可）
+├── tools/make_spiffs.ps1          PowerShell 實作（由 .bat 呼叫）
+├── tools/make_spiffs.sh           產生 spiffs.bin（bash / macOS / Linux）
 └── README.md
 ```
 
@@ -112,7 +115,7 @@ copy partitions.csv LILYGO-T-Display-S3_Nav\partitions.csv
 3. 首次燒錄後，SPIFFS 尚無網頁檔案，需上傳 `LILYGO-T-Display-S3_Nav/data/`：
    - 安裝 **ESP32 Sketch Data Upload** 外掛（arduino-esp32fs-plugin），
      再於 Arduino IDE 執行 `Tools > ESP32 Sketch Data Upload`。
-   - 或執行 `bash tools/make_spiffs.sh` 產生 `spiffs.bin`，再由網頁 OTA 上傳（見「OTA 更新」）。
+   - 或執行 `tools\make_spiffs.bat` 產生 `LILYGO-T-Display-S3_Nav\build\spiffs.bin`，再由網頁 OTA 上傳（見「OTA 更新」）。
 4. 重新啟動後：
    - 若尚未設定 WiFi：裝置開啟 AP `ESP32-S3_NAV-<MAC後4碼>`（例：`ESP32-S3_NAV-A1B2`），預設密碼 `12345678`。
    - 連上 AP 後開啟 `http://192.168.4.1` 或 `http://nav.local` 設定家中 WiFi。
@@ -158,11 +161,11 @@ GPIO14 接線：一端接 GPIO14，另一端接 GND（內部上拉，按下為 L
 | --- | --- |
 | 系統狀態 | WiFi / 電池 / 記憶體 / 韌體資訊、SPIFFS 使用量與檔案清單（每 4 秒更新） |
 | WiFi 設定 | 掃描 SSID、訊號強度、手動輸入 SSID / 密碼、連線、清除設定 |
-| MAP 導航 | Leaflet + OSM 圖磚、Nominatim 搜尋、地圖點選起終點、OSRM 路線、轉彎清單、即時導航狀態 |
+| MAP 導航 | Leaflet + OSM 圖磚、Nominatim 地址搜尋（支援門牌，查無資料時自動降級到道路／地區）、地圖點選起終點、OSRM 路線、轉彎清單、即時導航狀態 |
 | OTA 更新 | 上傳 `firmware.bin`、`spiffs.bin`，顯示進度，完成後自動重啟 |
 
-> 地圖圖磚與 Nominatim 需要網際網路。裝置處於 AP 模式時，手機 / 電腦通常無法上網，
-> 此時地圖會只剩灰色底圖；可先連上家中 WiFi，再以 `nav.local` 開啟網頁。
+> 地圖圖磚需要瀏覽器能上網。手機只連裝置 AP 時通常沒有網際網路，圖磚會只剩灰色底圖；
+> 但地址搜尋由裝置代理，仍可正常使用。建議先讓裝置連上家中 WiFi，再以 `nav.local` 開啟網頁。
 
 ### REST API
 
@@ -170,6 +173,7 @@ GPIO14 接線：一端接 GPIO14，另一端接 GND（內部上拉，按下為 L
 | --- | --- | --- |
 | GET | `/api/status` | 系統、WiFi、電池、記憶體、SPIFFS、導航摘要 |
 | GET | `/api/spiffs` | SPIFFS 容量與檔案清單 |
+| GET | `/api/geocode?q=...` | 地址搜尋（裝置代理 Nominatim；門牌查無資料時自動降級到道路／地區） |
 | GET | `/api/wifi/scan` | 掃描附近 SSID（阻塞數秒） |
 | POST | `/api/wifi` | `{"ssid":"...","pass":"..."}` 連線並儲存 |
 | DELETE | `/api/wifi` | 清除 WiFi 設定（之後自動重啟） |
@@ -184,6 +188,10 @@ GPIO14 接線：一端接 GPIO14，另一端接 GND（內部上拉，按下為 L
 OSRM 使用公開示範伺服器 `https://router.project-osrm.org`（僅供測試，
 長期使用請自架或改用商業服務）。裝置以 `WiFiClientSecure` 連線，憑證採 `setInsecure()`。
 
+地址搜尋由裝置代理 `https://nominatim.openstreetmap.org`，因此手機只連裝置 AP 時仍可搜尋。
+Nominatim 使用政策限制最多 1 次／秒；門牌查無資料時裝置會依序降級查詢（完整地址 →
+去掉門牌 → 去掉巷弄），最多約 3 秒。大量或商用請自架 Nominatim 或改用商業地理編碼服務。
+
 ---
 
 ## OTA 更新
@@ -196,7 +204,18 @@ arduino-cli：加上 `--output-dir` 指定輸出資料夾後取用 `*.ino.bin`�
 
 ### 檔案系統 `spiffs.bin`
 
-於**專案根目錄**執行（自動尋找 Arduino15 內的 mkspiffs，映像大小需與分割表一致）：
+Windows：直接雙擊 `tools\make_spiffs.bat`，或於**專案根目錄**執行：
+
+```powershell
+tools\make_spiffs.bat                    # 輸出 LILYGO-T-Display-S3_Nav\build\spiffs.bin
+tools\make_spiffs.bat D:\out\spiffs.bin  # 指定輸出檔名 / 路徑
+```
+
+腳本以 PowerShell 實作，會自動到 Arduino15 尋找 ESP32 核心附帶的 `mkspiffs.exe`，
+映像大小固定 `0x960000`（9.375 MB），並自動建立 `build\` 目錄。
+若 `mkspiffs` 不在預設位置，可先設定環境變數 `MKSPIFFS` 指向 `mkspiffs.exe`。
+
+macOS / Linux 或 Git Bash 可改用：
 
 ```bash
 bash tools/make_spiffs.sh              # 輸出 ./spiffs.bin
@@ -242,6 +261,15 @@ Source Han Sans 等 OFL 字型重新產生。
 
 ---
 
+## 版本紀錄
+
+| 版本 | 日期 | 重點 |
+| --- | --- | --- |
+| **1.1.0** | 2026-11-16 | WiFi 連線資訊改為兩頁（長 SSID 不截斷）；MAP 轉盤加入東南西北箭頭與目前方位；網頁地址搜尋改由裝置代理 Nominatim（支援門牌降級）；新增 `tools/make_spiffs.bat` / `.ps1` 產生 `build/spiffs.bin` |
+| 1.0.0 | 2026-11 | 初版：選單、狀態列、WiFi STA + AP 共存、OSRM 導航、網頁控制台、OTA 更新 |
+
+---
+
 ## 疑難排解
 
 | 症狀 | 處理 |
@@ -253,6 +281,8 @@ Source Han Sans 等 OFL 字型重新產生。
 | `nav.local` 無法開啟 | 部分 Android / Windows 不支援 mDNS，改用裝置 IP |
 | WiFi 一直連不上 | 確認 2.4GHz、密碼正確；必要時清除設定回到 AP 模式（預設密碼 `12345678`） |
 | 導航沒有箭頭 | 尚未規劃路線，或瀏覽器沒有送出位置；先在網頁按「規劃路線」 |
+| 地址搜尋找不到 | 裝置需連上可上網的 WiFi（STA）。門牌未建檔時會自動退回道路／地區；建議輸入含路名的格式，例如「桃園市平鎮區中正路16號」 |
+| 地址搜尋很慢 | 門牌查無資料時裝置會依 Nominatim 政策（1 次／秒）依序重試 2–3 次，最多約 3 秒 |
 | 規劃路線失敗，OSRM 回應 HTTP -1 | 裝置已連上 STA 但建不到 TLS 連線；韌體會自動降級 HTTP 重試，仍失敗請檢查網路、DNS 與 `router.project-osrm.org` 是否可達 |
 | 電池顯示 USB | 未接電池或電壓 > 4.32V（USB 供電時的正常現象） |
 
