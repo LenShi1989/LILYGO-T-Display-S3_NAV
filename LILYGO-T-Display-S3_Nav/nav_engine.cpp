@@ -211,6 +211,18 @@ void setPosition(double lat, double lon, bool hasHeading, float heading) {
   recompute(false);
 }
 
+// OSRM 主機名稱（由 OSRM_BASE 取得，未連線時用來判斷是否為 DNS 問題）
+static String osrmHost() {
+  String u = OSRM_BASE;
+  int p = u.indexOf("://");
+  if (p >= 0) u = u.substring(p + 3);
+  int slash = u.indexOf('/');
+  if (slash >= 0) u = u.substring(0, slash);
+  int colon = u.indexOf(':');
+  if (colon >= 0) u = u.substring(0, colon);
+  return u;
+}
+
 bool fetchRoute(double slat, double slon, double dlat, double dlon,
                 const char *name, String &err) {
   err = "";
@@ -233,27 +245,53 @@ bool fetchRoute(double slat, double slon, double dlat, double dlon,
   tls.setInsecure();
   tls.setHandshakeTimeout(12);
 
+  WiFiClient plain;
+
   HTTPClient http;
   http.setTimeout(15000);
   http.setConnectTimeout(9000);
   http.setReuse(false);
 
-  if (!http.begin(tls, url)) {
-    err = "無法建立 HTTPS 連線";
-    return false;
-  }
-  http.useHTTP10(true);
+  // 先走 HTTPS；若連線建立失敗（-1）再退回 HTTP，可避開裝置端 TLS
+  // 握手失敗（憑證 / 記憶體不足）造成的假性連線錯誤
+  int  code      = -1;
+  bool connected = false;
+  for (int attempt = 0; attempt < 2 && !connected; attempt++) {
+    bool   useTls = (attempt == 0);
+    String u      = url;
+    if (!useTls) u.replace("https://", "http://");
 
-  int code = http.GET();
-  if (code != 200) {
-    err = String("OSRM 回應 HTTP ") + code;
-    if (code < 0) err += String("（") + http.errorToString(code) + "）";
-    Serial.printf("[nav] OSRM 連線失敗：%s\n", err.c_str());
+    if (!(useTls ? http.begin(tls, u) : http.begin(plain, u))) {
+      http.end();
+      continue;
+    }
+    http.useHTTP10(true);
+
+    code = http.GET();
+    if (code == 200) { connected = true; break; }
+
+    Serial.printf("[nav] %s 失敗：HTTP %d（%s）\n", useTls ? "HTTPS" : "HTTP",
+                  code, http.errorToString(code).c_str());
     http.end();
+
+    if (code > 0) {  // 伺服器有回應但狀態碼不是 200，重試無益
+      err = String("OSRM 回應 HTTP ") + code;
+      return false;
+    }
+  }
+
+  if (!connected) {
+    IPAddress ip;
+    if (WiFi.hostByName(osrmHost().c_str(), ip)) {
+      err = String("無法連上 ") + osrmHost() + "（" + ip.toString() + "）";
+    } else {
+      err = String("DNS 解析失敗：") + osrmHost();
+    }
+    err += String("，HTTP ") + code;
+    Serial.printf("[nav] OSRM 連線失敗：%s\n", err.c_str());
     return false;
   }
 
-  // 只保留需要的欄位，降低記憶體用量
   NAV_JSON_DOC(filter, 4096);
   filter["code"] = true;
   filter["routes"][0]["distance"] = true;
