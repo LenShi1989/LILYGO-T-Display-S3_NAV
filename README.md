@@ -5,6 +5,7 @@ ESP32-S3 導航機：1.9 吋 TFT 捲動選單、電池 / WiFi 狀態列、網頁
 - 開發板：**LILYGO T-Display-S3**（ESP32-S3，16MB Flash / 8MB PSRAM，ST7789 170×320 8-bit 並列）
 - 操作：**GPIO0**（板載 BOOT）＝選擇、**GPIO14**（外接按鍵對 GND）＝確認，長按 0.8 秒返回
 - 網頁：`http://nav.local`，AP 模式 `http://192.168.4.1`（SSID `ESP32-S3_NAV-<MAC後4碼>`、預設密碼 `12345678`）
+- WiFi：**STA + AP 共存**，STA 連線成功後 AP 熱點仍保留，可隨時以手機直接連入設定
 
 ---
 
@@ -69,6 +70,7 @@ LILYGO-T-Display-S3_NAV/           專案根目錄（Git repository）
 │   └── data/                      網頁前端（打包成 SPIFFS 映像）
 ├── docs/                          腳位圖
 ├── tools/gen_cjk_font.py          字型產生器
+├── tools/make_spiffs.sh           產生 spiffs.bin（mkspiffs 包裝）
 └── README.md
 ```
 
@@ -110,7 +112,7 @@ copy partitions.csv LILYGO-T-Display-S3_Nav\partitions.csv
 3. 首次燒錄後，SPIFFS 尚無網頁檔案，需上傳 `LILYGO-T-Display-S3_Nav/data/`：
    - 安裝 **ESP32 Sketch Data Upload** 外掛（arduino-esp32fs-plugin），
      再於 Arduino IDE 執行 `Tools > ESP32 Sketch Data Upload`。
-   - 或使用 `mkspiffs` / `arduino-cli` 自行產生映像後，由網頁 OTA 上傳（見「OTA 更新」）。
+   - 或執行 `bash tools/make_spiffs.sh` 產生 `spiffs.bin`，再由網頁 OTA 上傳（見「OTA 更新」）。
 4. 重新啟動後：
    - 若尚未設定 WiFi：裝置開啟 AP `ESP32-S3_NAV-<MAC後4碼>`（例：`ESP32-S3_NAV-A1B2`），預設密碼 `12345678`。
    - 連上 AP 後開啟 `http://192.168.4.1` 或 `http://nav.local` 設定家中 WiFi。
@@ -194,8 +196,14 @@ arduino-cli：加上 `--output-dir` 指定輸出資料夾後取用 `*.ino.bin`�
 
 ### 檔案系統 `spiffs.bin`
 
-使用 `mkspiffs`（ESP32 版）於**專案根目錄**產生，映像大小需與分割表一致
-（`0x960000` = 9.375 MB）：
+於**專案根目錄**執行（自動尋找 Arduino15 內的 mkspiffs，映像大小需與分割表一致）：
+
+```bash
+bash tools/make_spiffs.sh              # 輸出 ./spiffs.bin
+bash tools/make_spiffs.sh out.bin      # 指定輸出檔名
+```
+
+若要直接使用 `mkspiffs`（ESP32 版，`0x960000` = 9.375 MB）：
 
 ```bash
 mkspiffs -c LILYGO-T-Display-S3_Nav/data -p 256 -b 4096 -s 0x960000 spiffs.bin
@@ -245,6 +253,7 @@ Source Han Sans 等 OFL 字型重新產生。
 | `nav.local` 無法開啟 | 部分 Android / Windows 不支援 mDNS，改用裝置 IP |
 | WiFi 一直連不上 | 確認 2.4GHz、密碼正確；必要時清除設定回到 AP 模式（預設密碼 `12345678`） |
 | 導航沒有箭頭 | 尚未規劃路線，或瀏覽器沒有送出位置；先在網頁按「規劃路線」 |
+| 規劃路線失敗，OSRM 回應 HTTP -1 | 裝置已連上 STA 但建不到 TLS 連線；韌體會自動降級 HTTP 重試，仍失敗請檢查網路、DNS 與 `router.project-osrm.org` 是否可達 |
 | 電池顯示 USB | 未接電池或電壓 > 4.32V（USB 供電時的正常現象） |
 
 ---
