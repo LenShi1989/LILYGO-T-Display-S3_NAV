@@ -24,9 +24,9 @@ constexpr int   INFO_Y      = 46;    // 資訊頁第一列
 constexpr int   INFO_ROW_H  = 20;
 constexpr int   INFO_ROWS   = 5;     // 每欄列數
 constexpr int   INFO_COLS   = 2;     // 橫向雙欄
-constexpr int   DIAL_CX     = 56;
-constexpr int   DIAL_CY     = 112;
-constexpr int   DIAL_R      = 34;
+constexpr int   DIAL_CX     = 58;
+constexpr int   DIAL_CY     = 104;
+constexpr int   DIAL_R      = 28;
 constexpr float kDeg        = 0.01745329252f;  // PI / 180
 
 TFT_eSPI    s_tft;
@@ -155,6 +155,14 @@ String fmtDurShort(uint32_t seconds) {
     snprintf(b, sizeof(b), "%u秒", (unsigned)seconds);
   }
   return String(b);
+}
+
+const char *bearingName(float deg) {
+  static const char *names[] = {"北", "東北", "東", "東南",
+                                "南", "西南", "西", "西北"};
+  int idx = (int)((deg + 22.5f) / 45.0f);
+  if (idx < 0) idx += 8;
+  return names[idx % 8];
 }
 
 const char *rssiText(int32_t rssi) {
@@ -440,41 +448,79 @@ void drawInfoPage(const char *title, const Row *rows, int n) {
 // ---------------------------------------------------------------------------
 // 各資訊頁資料
 // ---------------------------------------------------------------------------
-int buildWifiRows(Row *out) {
-  const WifiSnapshot &w = g_app.wifi;
-  int n = 0;
+struct WifiField {
+  const char *k;
+  String      v;
+  bool        wide;   // true = 標籤一行、數值另起一行（長 SSID 不截斷）
+};
 
-  out[n++] = {"狀態", wifiStateText()};
+void drawWifiPage() {
+  const WifiSnapshot &w = g_app.wifi;
 
   String ssid = w.staConnected ? w.ssid : Net::savedSsid();
   if (ssid.length() == 0) ssid = "—";
-  out[n++] = {"SSID", ssid};
 
   String ip = w.staConnected ? w.ip : (w.apActive ? w.apIp : String("未取得"));
-  out[n++] = {"IP", ip};
-  out[n++] = {"mDNS", w.host};
 
-  char buf[40];
+  String sig;
   if (w.staConnected) {
-    snprintf(buf, sizeof(buf), "%d dBm %s", (int)w.rssi, rssiText(w.rssi));
+    char b[48];
+    snprintf(b, sizeof(b), "%d dBm %s · CH %d", (int)w.rssi,
+             rssiText(w.rssi), (int)w.channel);
+    sig = b;
   } else {
-    snprintf(buf, sizeof(buf), "—");
+    sig = "—";
   }
-  out[n++] = {"訊號", buf};
-
-  if (w.staConnected) {
-    snprintf(buf, sizeof(buf), "%d", (int)w.channel);
-  } else {
-    snprintf(buf, sizeof(buf), "—");
-  }
-  out[n++] = {"頻道", buf};
 
   String mac = w.mac.length() ? w.mac : Net::macString();
   mac.replace(":", "");
-  out[n++] = {"MAC", mac};
-  out[n++] = {"熱點", Net::apSsid()};
-  out[n++] = {"熱點密碼", AP_PASS};
-  return n;
+
+  // 分成兩頁：第 1 頁 STA 連線、第 2 頁熱點 / MAC。
+  // SSID、熱點 SSID 使用 wide 欄位獨占一行，32 字元也能完整顯示。
+  WifiField p1[4];
+  WifiField p2[4];
+  uint8_t n1 = 0, n2 = 0;
+
+  p1[n1++] = {"狀態", wifiStateText(), false};
+  p1[n1++] = {"SSID", ssid, true};
+  p1[n1++] = {"IP", ip, false};
+  p1[n1++] = {"mDNS", w.host, false};
+
+  p2[n2++] = {"訊號", sig, false};
+  p2[n2++] = {"MAC", mac, false};
+  p2[n2++] = {"熱點", Net::apSsid(), true};
+  p2[n2++] = {"熱點密碼", AP_PASS, false};
+
+  s_pageCount = 2;
+  if (s_page > 1) s_page = 1;
+
+  const WifiField *fields = (s_page == 0) ? p1 : p2;
+  const uint8_t count = (s_page == 0) ? n1 : n2;
+
+  char pg[8];
+  snprintf(pg, sizeof(pg), "%u/2", (unsigned)s_page + 1);
+
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, FOOTER_Y - CONTENT_Y, C_BG);
+  drawHeader("WiFi 連線資訊", pg);
+
+  int y = INFO_Y;
+  for (uint8_t i = 0; i < count; i++) {
+    const WifiField &f = fields[i];
+    if (f.wide) {
+      Txt::draw(8, y, f.k, C_MUTED);
+      Txt::draw(16, y + 18, f.v.c_str(), C_TEXT, SCR_W - 28);
+      y += 38;
+    } else {
+      Txt::draw(8, y + 1, f.k, C_MUTED, 80);
+      int vx = 8 + Txt::width(f.k) + 6;
+      if (vx > 8 + 80) vx = 8 + 80;
+      Txt::drawRight(SCR_W - 8, y + 1, f.v.c_str(), C_TEXT, SCR_W - 16 - vx);
+      y += 20;
+    }
+    if (i + 1 < count) s_tft.drawFastHLine(8, y - 2, SCR_W - 16, C_BORDER);
+  }
+
+  drawFooter("0:換頁   14:返回");
 }
 
 int buildSysRows(Row *out) {
@@ -602,8 +648,47 @@ void drawSplash() {
 // ---------------------------------------------------------------------------
 void navInstructionArea() {
   const NavStatus &n = Nav::status();
-  s_tft.fillRect(0, CONTENT_Y, SCR_W, 38, C_BG);
-  Txt::drawWrapped(10, CONTENT_Y + 2, 300, 18, n.instruction, C_WHITE, 2);
+  s_tft.fillRect(100, CONTENT_Y, SCR_W - 100, 38, C_BG);
+  Txt::drawWrapped(104, CONTENT_Y + 2, SCR_W - 112, 18, n.instruction,
+                   C_WHITE, 2);
+}
+
+void drawCardinalLetter(float angleDeg, const char *label, bool primary) {
+  const int cx = DIAL_CX, cy = DIAL_CY;
+  float a  = angleDeg * kDeg;
+  float sx = sinf(a), sy = -cosf(a);
+  const float lr = DIAL_R + 9.0f;
+
+  int lx = (int)(cx + sx * lr) - 4;   // ASCII 字寬 8
+  int ly = (int)(cy + sy * lr) - 8;   // 字高 16
+
+  Txt::draw(lx, ly, label, primary ? C_WHITE : C_MUTED);
+}
+
+void drawCardinalArrow(float angleDeg, const char *label, bool primary) {
+  const int cx = DIAL_CX, cy = DIAL_CY;
+  float a  = angleDeg * kDeg;
+  float sx = sinf(a), sy = -cosf(a);
+  float px = -sy, py = sx;
+
+  const float tip  = DIAL_R - 1.0f;
+  const float base = DIAL_R - 9.0f;
+  const float hw   = 3.5f;
+  uint16_t    c    = primary ? C_ACCENT : C_ACCENT_DIM;
+
+  s_tft.fillTriangle((int)(cx + sx * tip), (int)(cy + sy * tip),
+                     (int)(cx + sx * base + px * hw),
+                     (int)(cy + sy * base + py * hw),
+                     (int)(cx + sx * base - px * hw),
+                     (int)(cy + sy * base - py * hw), c);
+  drawCardinalLetter(angleDeg, label, primary);
+}
+
+void navCardinalMarks() {
+  drawCardinalArrow(0.0f, "N", true);
+  drawCardinalArrow(90.0f, "E", false);
+  drawCardinalArrow(180.0f, "S", false);
+  drawCardinalArrow(270.0f, "W", false);
 }
 
 void navDialFrame() {
@@ -613,18 +698,17 @@ void navDialFrame() {
   s_tft.drawCircle(cx, cy, r, C_BORDER);
 
   for (int i = 0; i < 36; i++) {
+    if (i % 9 == 0) continue;   // 四個正方位改畫箭頭
     float a = (float)i * 10.0f * kDeg;
     float sx = sinf(a), sy = -cosf(a);
-    bool major = (i % 9 == 0);
-    float r0 = major ? (r - 11) : (r - 7);
+    float r0 = (float)(r - 6);
     s_tft.drawLine((int)(cx + sx * r0), (int)(cy + sy * r0),
                    (int)(cx + sx * (r - 2)), (int)(cy + sy * (r - 2)),
-                   major ? C_ACCENT : C_BORDER);
+                   C_BORDER);
   }
 
-  // 正北標記
-  s_tft.fillTriangle(cx - 4, cy - r + 3, cx + 4, cy - r + 3, cx, cy - r + 12,
-                     C_ACCENT);
+  // 東南西北：內圈箭頭 + 外圈 N/E/S/W
+  navCardinalMarks();
 }
 
 void navDialNeedle() {
@@ -638,6 +722,7 @@ void navDialNeedle() {
       s_tft.drawLine(cx - 10, cy + i, cx - 3, cy + 8 + i, C_GREEN);
       s_tft.drawLine(cx - 3, cy + 8 + i, cx + 12, cy - 9 + i, C_GREEN);
     }
+    navCardinalMarks();
     return;
   }
 
@@ -645,7 +730,7 @@ void navDialNeedle() {
   float sx = sinf(rad), sy = -cosf(rad);
   float px = -sy, py = sx;
 
-  const float tip = 24.0f, base = 4.0f, hw = 8.0f;
+  const float tip = 18.0f, base = 3.0f, hw = 6.5f;
   s_tft.fillTriangle((int)(cx + sx * tip), (int)(cy + sy * tip),
                      (int)(cx + sx * base + px * hw),
                      (int)(cy + sy * base + py * hw),
@@ -663,6 +748,9 @@ void navDialNeedle() {
 
   s_tft.fillCircle(cx, cy, 4, C_BG);
   s_tft.drawCircle(cx, cy, 4, C_BORDER);
+
+  // 指針重繪後，把四個方位字母補回來（畫在最上層）
+  navCardinalMarks();
 }
 
 void navBottom() {
@@ -718,8 +806,9 @@ void drawNavFull() {
     snprintf(hint, sizeof(hint), "14長按返回   AP %s / %s",
              g_app.wifi.apSsid.c_str(), AP_PASS);
   } else if (n.active) {
-    snprintf(hint, sizeof(hint), "步驟 %u/%u   14長按返回",
-             (unsigned)n.stepIndex + 1, (unsigned)n.stepCount);
+    snprintf(hint, sizeof(hint), "步驟 %u/%u   %s %.0f°   14長按返回",
+             (unsigned)n.stepIndex + 1, (unsigned)n.stepCount,
+             bearingName(n.bearing), (double)n.bearing);
   } else {
     snprintf(hint, sizeof(hint), "14長按:返回");
   }
@@ -848,11 +937,9 @@ void drawBase() {
       drawMenu();
       break;
 
-    case Ui::View::WifiInfo: {
-      Row rows[10];
-      drawInfoPage("WiFi 連線資訊", rows, buildWifiRows(rows));
+    case Ui::View::WifiInfo:
+      drawWifiPage();
       break;
-    }
 
     case Ui::View::SysInfo: {
       Row rows[18];
