@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <SPIFFS.h>
 #include <Update.h>
+#include <esp_partition.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
@@ -26,6 +27,7 @@ size_t   s_otaTotal   = 0;
 size_t   s_otaWritten = 0;
 bool     s_otaOk      = false;
 bool     s_otaIsFs    = false;
+char     s_otaErr[96] = "";
 
 // ---------------------------------------------------------------------------
 // 回應工具
@@ -534,15 +536,20 @@ void handleNavClear() {
 // ---------------------------------------------------------------------------
 // OTA 上傳（Update 函式庫）
 // ---------------------------------------------------------------------------
+void otaSetError(const char *msg) {
+  snprintf(s_otaErr, sizeof(s_otaErr), "%s", (msg && msg[0]) ? msg : "更新失敗");
+}
+
 void otaUpload() {
   HTTPUpload &up = server.upload();
   const char *title = s_otaIsFs ? "網頁檔案更新" : "韌體更新";
 
   switch (up.status) {
-    case UPLOAD_FILE_START:
+    case UPLOAD_FILE_START: {
       s_otaWritten = 0;
       s_otaOk      = false;
       s_otaTotal   = 0;
+      s_otaErr[0]  = '\0';
       // 前端以 ?size= 帶入原始檔大小（multipart 的 totalSize 在此核心版本為 0）
       if (server.hasArg("size")) {
         s_otaTotal = (size_t)strtoul(server.arg("size").c_str(), nullptr, 10);
@@ -550,19 +557,61 @@ void otaUpload() {
       Serial.printf("[ota] %s：%s（%u bytes）\n", title, up.filename.c_str(),
                     (unsigned)s_otaTotal);
       Ui::otaProgress(title, 0, s_otaTotal);
+
+      // 先檢查分割區與檔案大小，不要等上傳完 9.8 MB 才失敗
+      if (s_otaIsFs) {
+        const esp_partition_t *part = esp_partition_find_first(
+            ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+        if (!part) {
+          otaSetError("找不到 SPIFFS 分割區");
+          Serial.printf("[ota] %s\n", s_otaErr);
+          Ui::otaResult(false, s_otaErr);
+          break;  // 未呼叫 Update.begin()，後續資料直接丟棄
+        }
+        if (s_otaTotal > 0 && s_otaTotal != part->size) {
+          snprintf(s_otaErr, sizeof(s_otaErr), "檔案 %u bytes，分割區 %u bytes，大小不符",
+                   (unsigned)s_otaTotal, (unsigned)part->size);
+          Serial.printf("[ota] %s\n", s_otaErr);
+          Ui::otaResult(false, s_otaErr);
+          break;
+        }
+      }
+
       if (s_otaIsFs) SPIFFS.end();
       if (!Update.begin(s_otaTotal > 0 ? s_otaTotal : UPDATE_SIZE_UNKNOWN,
                         s_otaIsFs ? U_SPIFFS : U_FLASH)) {
-        Serial.printf("[ota] 無法開始：%s\n", Update.errorString());
-        Ui::otaResult(false, Update.errorString());
+        otaSetError(Update.errorString());
+        Serial.printf("[ota] 無法開始：%s\n", s_otaErr);
+        Ui::otaResult(false, s_otaErr);
+        if (s_otaIsFs) SPIFFS.begin(true);
       }
       break;
+    }
 
     case UPLOAD_FILE_WRITE:
       if (!Update.isRunning()) break;
+      // 第一個封包確認檔案類型，避免韌體／檔案系統上傳到錯的欄位
+      if (s_otaWritten == 0 && up.currentSize > 0) {
+        if (!s_otaIsFs && up.buf[0] != 0xE9) {
+          otaSetError("這不是韌體檔（開頭應為 0xE9），請改用「檔案系統更新」");
+          Update.abort();
+          Serial.printf("[ota] %s\n", s_otaErr);
+          Ui::otaResult(false, s_otaErr);
+          break;
+        }
+        if (s_otaIsFs && up.buf[0] == 0xE9) {
+          otaSetError("這是韌體檔，請改用「韌體更新」");
+          Update.abort();
+          SPIFFS.begin(true);
+          Serial.printf("[ota] %s\n", s_otaErr);
+          Ui::otaResult(false, s_otaErr);
+          break;
+        }
+      }
       if (Update.write(up.buf, up.currentSize) != up.currentSize) {
-        Serial.printf("[ota] 寫入失敗：%s\n", Update.errorString());
-        Ui::otaResult(false, Update.errorString());
+        otaSetError(Update.errorString());
+        Serial.printf("[ota] 寫入失敗：%s\n", s_otaErr);
+        Ui::otaResult(false, s_otaErr);
         break;
       }
       s_otaWritten += up.currentSize;
@@ -571,16 +620,20 @@ void otaUpload() {
 
     case UPLOAD_FILE_END:
       if (!Update.isRunning()) break;
-      // 最後一個緩衝區可能是以 FILE_END 送達，需手動寫入
-      if (up.currentSize > 0) {
-        if (Update.write(up.buf, up.currentSize) != up.currentSize) {
-          Serial.printf("[ota] 尾段寫入失敗：%s\n", Update.errorString());
-          Ui::otaResult(false, Update.errorString());
-          break;
-        }
-        s_otaWritten += up.currentSize;
-      }
+      // WebServer 在 FILE_WRITE 階段就會送出全部資料（含最後一個不滿
+      // HTTP_UPLOAD_BUFLEN 的區塊）；FILE_END 的 currentSize 仍是該區塊，
+      // 若再寫一次就等於重複寫入尾巴。spiffs.bin 剛好等於整個分割區大小，
+      // 重複的尾巴會超出分割區，Update.write 失敗，OTA 因此中斷。
       if (s_otaTotal == 0) s_otaTotal = s_otaWritten;
+      if (s_otaWritten != s_otaTotal) {
+        otaSetError("上傳長度與檔案大小不符");
+        Serial.printf("[ota] %s（%u / %u）\n", s_otaErr,
+                      (unsigned)s_otaWritten, (unsigned)s_otaTotal);
+        Update.abort();
+        Ui::otaResult(false, s_otaErr);
+        if (s_otaIsFs) SPIFFS.begin(true);
+        break;
+      }
       s_otaOk = Update.end(true);
       if (s_otaOk) {
         Serial.printf("[ota] %s 完成（%u bytes）\n", title, (unsigned)s_otaWritten);
@@ -588,8 +641,9 @@ void otaUpload() {
         s_rebootAt  = millis() + 2500;
         s_rebooting = true;
       } else {
-        Serial.printf("[ota] 結束失敗：%s\n", Update.errorString());
-        Ui::otaResult(false, Update.errorString());
+        otaSetError(Update.errorString());
+        Serial.printf("[ota] 結束失敗：%s\n", s_otaErr);
+        Ui::otaResult(false, s_otaErr);
         if (s_otaIsFs) SPIFFS.begin(true);
       }
       break;
@@ -597,7 +651,8 @@ void otaUpload() {
     case UPLOAD_FILE_ABORTED:
       Update.abort();
       if (s_otaIsFs) SPIFFS.begin(true);
-      Ui::otaResult(false, "上傳已中斷");
+      otaSetError("上傳已中斷");
+      Ui::otaResult(false, s_otaErr);
       break;
   }
 }
@@ -613,10 +668,12 @@ void otaUploadSpiffs() {
 }
 
 void handleOtaDone() {
-  NAV_JSON_DOC(doc, 320);
+  NAV_JSON_DOC(doc, 640);
+  const char *msg = s_otaOk ? "更新完成，裝置重新啟動中"
+                            : (s_otaErr[0] ? (const char *)s_otaErr : "更新失敗");
   doc["ok"]      = s_otaOk;
   doc["written"] = (uint32_t)s_otaWritten;
-  doc["msg"]     = s_otaOk ? "更新完成，裝置重新啟動中" : "更新失敗";
+  doc["msg"]     = msg;
   sendJsonDoc(doc, s_otaOk ? 200 : 500);
 }
 
@@ -624,6 +681,7 @@ void handleOtaDone() {
 // /api/system/reboot
 // ---------------------------------------------------------------------------
 void handleReboot() {
+
   NAV_JSON_DOC(doc, 128);
   doc["ok"]  = true;
   doc["msg"] = "重新啟動中";
