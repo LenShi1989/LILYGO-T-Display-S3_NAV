@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 #define FW_NAME       "LILYGO T-Display-S3 NAV"
 #define FW_SHORT      "NAV"
-#define FW_VERSION    "1.0.0"
+#define FW_VERSION    "1.1.0"
 #define FW_BUILD      __DATE__ " " __TIME__
 #define FW_BOARD      "LILYGO T-Display-S3"
 
