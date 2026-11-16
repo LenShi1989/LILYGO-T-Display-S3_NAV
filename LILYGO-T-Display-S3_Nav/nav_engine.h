@@ -62,4 +62,8 @@ const NavStatus &status();
 String toJson(bool withGeometry, bool withSteps = false);
 void dropGeometry();
 
+// 路線幾何（已抽樣，供裝置端 HUD 繪製）
+uint16_t routePointCount();
+void     routePoint(uint16_t i, float &lat, float &lon);
+
 }  // namespace Nav

@@ -13,6 +13,70 @@ static NavStatus s_nav;
 static String    s_geometry;
 static uint32_t  s_lastTick = 0;
 
+// OSRM geometry 抽樣後的點（HUD 用），避免每次重繪重新解碼
+static float    s_geoLat[NAV_MAX_GEO_PTS];
+static float    s_geoLon[NAV_MAX_GEO_PTS];
+static uint16_t s_geoCount = 0;
+
+// 解碼 OSRM 的 encoded polyline（precision 5）
+// maxPts = 0 時只計數，不寫入 lat/lon
+static uint32_t decodePolyline(const char *s, float *lat, float *lon,
+                               uint16_t maxPts, uint32_t stride) {
+  uint32_t index = 0;
+  int32_t  latE = 0, lonE = 0;
+  uint32_t n = 0, kept = 0;
+  const size_t len = strlen(s);
+
+  while (index < len) {
+    int32_t deltaLat = 0, deltaLon = 0;
+
+    for (int k = 0; k < 2; k++) {
+      int32_t delta = 0;
+      int shift = 0;
+      int b;
+      do {
+        if (index >= len) return kept;
+        b = (int)(uint8_t)s[index++] - 63;
+        delta |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+
+      int32_t val = (delta & 1) ? ~(delta >> 1) : (delta >> 1);
+      if (k == 0) {
+        deltaLat = val;
+      } else {
+        deltaLon = val;
+      }
+    }
+
+    latE += deltaLat;
+    lonE += deltaLon;
+
+    if (n % stride == 0 && (maxPts == 0 || kept < maxPts)) {
+      if (lat) lat[kept] = (float)latE * 1e-5f;
+      if (lon) lon[kept] = (float)lonE * 1e-5f;
+      kept++;
+    }
+    n++;
+  }
+  return kept;
+}
+
+// 將路線 geometry 抽樣成固定點數，供裝置端 HUD 繪製
+static void buildGeometryCache() {
+  s_geoCount = 0;
+  if (s_geometry.length() == 0) return;
+
+  uint32_t total = decodePolyline(s_geometry.c_str(), nullptr, nullptr, 0, 1);
+  if (total == 0) return;
+
+  uint32_t stride = (total + NAV_MAX_GEO_PTS - 1) / NAV_MAX_GEO_PTS;
+  if (stride == 0) stride = 1;
+
+  s_geoCount = (uint16_t)decodePolyline(s_geometry.c_str(), s_geoLat, s_geoLon,
+                                        NAV_MAX_GEO_PTS, stride);
+}
+
 // ---------------------------------------------------------------------------
 // 地理計算
 // ---------------------------------------------------------------------------
@@ -186,6 +250,7 @@ static void recompute(bool force = false) {
 void begin() {
   memset(&s_nav, 0, sizeof(s_nav));
   s_geometry = "";
+  s_geoCount = 0;
 }
 
 void loop() {
@@ -199,6 +264,7 @@ void loop() {
 void clear() {
   memset(&s_nav, 0, sizeof(s_nav));
   s_geometry = "";
+  s_geoCount = 0;
   s_nav.rev++;
 }
 
@@ -357,6 +423,7 @@ bool fetchRoute(double slat, double slon, double dlat, double dlon,
   fresh.rev = s_nav.rev + 1;
 
   s_geometry = (const char *)(route["geometry"] | "");
+  buildGeometryCache();
 
   s_nav = fresh;
   recompute(true);
@@ -370,6 +437,18 @@ bool fetchRoute(double slat, double slon, double dlat, double dlon,
 const NavStatus &status() { return s_nav; }
 
 void dropGeometry() { s_geometry = ""; }
+
+uint16_t routePointCount() { return s_geoCount; }
+
+void routePoint(uint16_t i, float &lat, float &lon) {
+  if (i >= s_geoCount) {
+    lat = 0;
+    lon = 0;
+    return;
+  }
+  lat = s_geoLat[i];
+  lon = s_geoLon[i];
+}
 
 String toJson(bool withGeometry, bool withSteps) {
   NAV_JSON_DOC(doc, 32768);

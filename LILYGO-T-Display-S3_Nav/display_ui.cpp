@@ -24,9 +24,6 @@ constexpr int   INFO_Y      = 46;    // 資訊頁第一列
 constexpr int   INFO_ROW_H  = 20;
 constexpr int   INFO_ROWS   = 5;     // 每欄列數
 constexpr int   INFO_COLS   = 2;     // 橫向雙欄
-constexpr int   DIAL_CX     = 58;
-constexpr int   DIAL_CY     = 104;
-constexpr int   DIAL_R      = 28;
 constexpr float kDeg        = 0.01745329252f;  // PI / 180
 
 TFT_eSPI    s_tft;
@@ -454,6 +451,11 @@ struct WifiField {
   bool        wide;   // true = 標籤一行、數值另起一行（長 SSID 不截斷）
 };
 
+// 統一對齊：標籤固定靠左，數值固定在同一欄位起點
+constexpr int WIFI_KX = 10;                        // 標籤 x
+constexpr int WIFI_VX = 88;                        // 數值 x
+constexpr int WIFI_VW = SCR_W - WIFI_VX - 10;      // 數值可用寬度
+
 void drawWifiPage() {
   const WifiSnapshot &w = g_app.wifi;
 
@@ -507,17 +509,17 @@ void drawWifiPage() {
   for (uint8_t i = 0; i < count; i++) {
     const WifiField &f = fields[i];
     if (f.wide) {
-      Txt::draw(8, y, f.k, C_MUTED);
-      Txt::draw(16, y + 18, f.v.c_str(), C_TEXT, SCR_W - 28);
+      Txt::draw(WIFI_KX, y, f.k, C_MUTED);
+      Txt::draw(WIFI_KX, y + 18, f.v.c_str(), C_TEXT, SCR_W - WIFI_KX * 2);
       y += 38;
     } else {
-      Txt::draw(8, y + 1, f.k, C_MUTED, 80);
-      int vx = 8 + Txt::width(f.k) + 6;
-      if (vx > 8 + 80) vx = 8 + 80;
-      Txt::drawRight(SCR_W - 8, y + 1, f.v.c_str(), C_TEXT, SCR_W - 16 - vx);
+      Txt::draw(WIFI_KX, y + 1, f.k, C_MUTED);
+      Txt::draw(WIFI_VX, y + 1, f.v.c_str(), C_TEXT, WIFI_VW);
       y += 20;
     }
-    if (i + 1 < count) s_tft.drawFastHLine(8, y - 2, SCR_W - 16, C_BORDER);
+    if (i + 1 < count) {
+      s_tft.drawFastHLine(WIFI_KX, y - 2, SCR_W - WIFI_KX * 2, C_BORDER);
+    }
   }
 
   drawFooter("0:換頁   14:返回");
@@ -644,133 +646,297 @@ void drawSplash() {
 }
 
 // ---------------------------------------------------------------------------
-// 導航畫面
+// 導航畫面 — HUD 式箭頭導引（參考 docs/HUD範例.png）
 // ---------------------------------------------------------------------------
-void navInstructionArea() {
-  const NavStatus &n = Nav::status();
-  s_tft.fillRect(100, CONTENT_Y, SCR_W - 100, 38, C_BG);
-  Txt::drawWrapped(104, CONTENT_Y + 2, SCR_W - 112, 18, n.instruction,
-                   C_WHITE, 2);
+constexpr int NAV_TOP_H   = 50;                    // 頂部資訊區高度（40..90）
+constexpr int NAV_PATH_Y0 = CONTENT_Y + NAV_TOP_H; // 路線區上緣 90
+constexpr int NAV_PATH_Y1 = 146;                   // 路線區下緣
+constexpr int NAV_ICON_X  = 8;
+constexpr int NAV_ICON_Y  = 44;
+constexpr int NAV_ICON_S  = 46;
+
+// 由箭頭尖端與方向畫出實心箭頭
+void navArrowHead(int tipX, int tipY, float dirX, float dirY, int size,
+                  uint16_t color) {
+  float len = sqrtf(dirX * dirX + dirY * dirY);
+  if (len < 0.001f) return;
+  dirX /= len;
+  dirY /= len;
+
+  float px = -dirY, py = dirX;
+  int bx = tipX - (int)(dirX * size);
+  int by = tipY - (int)(dirY * size);
+
+  s_tft.fillTriangle(tipX, tipY,
+                     bx + (int)(px * size * 0.62f),
+                     by + (int)(py * size * 0.62f),
+                     bx - (int)(px * size * 0.62f),
+                     by - (int)(py * size * 0.62f), color);
 }
 
-void drawCardinalLetter(float angleDeg, const char *label, bool primary) {
-  const int cx = DIAL_CX, cy = DIAL_CY;
-  float a  = angleDeg * kDeg;
-  float sx = sinf(a), sy = -cosf(a);
-  const float lr = DIAL_R + 9.0f;
+// 轉彎箭頭圖示：白底方塊 + 綠色箭頭（同 HUD 範例）
+void navTurnIcon(const NavStatus &n) {
+  s_tft.fillRect(NAV_ICON_X, NAV_ICON_Y, NAV_ICON_S, NAV_ICON_S, C_WHITE);
+  s_tft.drawRect(NAV_ICON_X, NAV_ICON_Y, NAV_ICON_S, NAV_ICON_S, C_BORDER);
 
-  int lx = (int)(cx + sx * lr) - 4;   // ASCII 字寬 8
-  int ly = (int)(cy + sy * lr) - 8;   // 字高 16
+  const int cx = NAV_ICON_X + NAV_ICON_S / 2;
+  const int cy = NAV_ICON_Y + NAV_ICON_S / 2 + 2;
 
-  Txt::draw(lx, ly, label, primary ? C_WHITE : C_MUTED);
-}
+  const NavStep *st =
+      (n.stepIndex < n.stepCount) ? &n.steps[n.stepIndex] : nullptr;
+  const char *type = st ? st->type : "";
+  const char *mod  = st ? st->modifier : "";
 
-void drawCardinalArrow(float angleDeg, const char *label, bool primary) {
-  const int cx = DIAL_CX, cy = DIAL_CY;
-  float a  = angleDeg * kDeg;
-  float sx = sinf(a), sy = -cosf(a);
-  float px = -sy, py = sx;
+  const uint16_t c = C_GREEN;
+  const int      lw = 7;
 
-  const float tip  = DIAL_R - 1.0f;
-  const float base = DIAL_R - 9.0f;
-  const float hw   = 3.5f;
-  uint16_t    c    = primary ? C_ACCENT : C_ACCENT_DIM;
-
-  s_tft.fillTriangle((int)(cx + sx * tip), (int)(cy + sy * tip),
-                     (int)(cx + sx * base + px * hw),
-                     (int)(cy + sy * base + py * hw),
-                     (int)(cx + sx * base - px * hw),
-                     (int)(cy + sy * base - py * hw), c);
-  drawCardinalLetter(angleDeg, label, primary);
-}
-
-void navCardinalMarks() {
-  drawCardinalArrow(0.0f, "N", true);
-  drawCardinalArrow(90.0f, "E", false);
-  drawCardinalArrow(180.0f, "S", false);
-  drawCardinalArrow(270.0f, "W", false);
-}
-
-void navDialFrame() {
-  const int cx = DIAL_CX, cy = DIAL_CY, r = DIAL_R;
-
-  s_tft.fillCircle(cx, cy, r, C_PANEL);
-  s_tft.drawCircle(cx, cy, r, C_BORDER);
-
-  for (int i = 0; i < 36; i++) {
-    if (i % 9 == 0) continue;   // 四個正方位改畫箭頭
-    float a = (float)i * 10.0f * kDeg;
-    float sx = sinf(a), sy = -cosf(a);
-    float r0 = (float)(r - 6);
-    s_tft.drawLine((int)(cx + sx * r0), (int)(cy + sy * r0),
-                   (int)(cx + sx * (r - 2)), (int)(cy + sy * (r - 2)),
-                   C_BORDER);
+  if (!strcmp(type, "arrive")) {
+    // 終點旗
+    s_tft.drawWideLine(cx - 8, cy + 15, cx - 8, cy - 13, 4, c);
+    s_tft.fillTriangle(cx - 8, cy - 13, cx + 11, cy - 6, cx - 8, cy + 1, c);
+    return;
   }
-
-  // 東南西北：內圈箭頭 + 外圈 N/E/S/W
-  navCardinalMarks();
-}
-
-void navDialNeedle() {
-  const NavStatus &n = Nav::status();
-  const int cx = DIAL_CX, cy = DIAL_CY;
-
-  s_tft.fillCircle(cx, cy, DIAL_R - 9, C_PANEL);
-
-  if (n.arrived) {
-    for (int i = -2; i <= 2; i++) {
-      s_tft.drawLine(cx - 10, cy + i, cx - 3, cy + 8 + i, C_GREEN);
-      s_tft.drawLine(cx - 3, cy + 8 + i, cx + 12, cy - 9 + i, C_GREEN);
+  if (!strcmp(mod, "uturn")) {
+    s_tft.drawWideLine(cx + 8, cy + 14, cx + 8, cy - 2, lw, c);
+    s_tft.drawWideLine(cx + 8, cy - 2, cx - 8, cy - 2, lw, c);
+    s_tft.drawWideLine(cx - 8, cy - 2, cx - 8, cy + 5, lw, c);
+    navArrowHead(cx - 8, cy + 15, 0, 1, 8, c);
+    return;
+  }
+  if (!strcmp(type, "roundabout") || !strcmp(type, "rotary") ||
+      !strcmp(type, "roundabout turn")) {
+    const float r = 11.0f;
+    for (int i = 0; i < 11; i++) {
+      float a1 = (float)i * 30.0f * kDeg;
+      float a2 = (float)(i + 1) * 30.0f * kDeg;
+      s_tft.drawWideLine((int)(cx + sinf(a1) * r), (int)(cy - cosf(a1) * r),
+                         (int)(cx + sinf(a2) * r), (int)(cy - cosf(a2) * r),
+                         5, c);
     }
-    navCardinalMarks();
+    navArrowHead((int)(cx + sinf(300.0f * kDeg) * (r + 2)),
+                 (int)(cy - cosf(300.0f * kDeg) * (r + 2)),
+                 cosf(300.0f * kDeg), sinf(300.0f * kDeg), 8, c);
     return;
   }
 
-  float rad = n.bearing * kDeg;
-  float sx = sinf(rad), sy = -cosf(rad);
-  float px = -sy, py = sx;
+  enum TurnDir { kUp, kLeft, kRight, kSlightLeft, kSlightRight, kSharpLeft, kSharpRight };
+  TurnDir dir = kUp;
 
-  const float tip = 18.0f, base = 3.0f, hw = 6.5f;
-  s_tft.fillTriangle((int)(cx + sx * tip), (int)(cy + sy * tip),
-                     (int)(cx + sx * base + px * hw),
-                     (int)(cy + sy * base + py * hw),
-                     (int)(cx + sx * base - px * hw),
-                     (int)(cy + sy * base - py * hw),
-                     C_ACCENT);
+  if (!strcmp(mod, "left")) {
+    dir = kLeft;
+  } else if (!strcmp(mod, "right")) {
+    dir = kRight;
+  } else if (!strcmp(mod, "slight left")) {
+    dir = kSlightLeft;
+  } else if (!strcmp(mod, "slight right")) {
+    dir = kSlightRight;
+  } else if (!strcmp(mod, "sharp left")) {
+    dir = kSharpLeft;
+  } else if (!strcmp(mod, "sharp right")) {
+    dir = kSharpRight;
+  } else if (!strcmp(type, "fork") || !strcmp(type, "merge")) {
+    dir = (mod[0] == 'l') ? kSlightLeft : kSlightRight;
+  } else if (!strcmp(type, "end of road")) {
+    dir = (mod[0] == 'l') ? kLeft : kRight;
+  }
 
-  // 尾翼
-  s_tft.fillTriangle((int)(cx - sx * 14), (int)(cy - sy * 14),
-                     (int)(cx + sx * 2 + px * 5),
-                     (int)(cy + sy * 2 + py * 5),
-                     (int)(cx + sx * 2 - px * 5),
-                     (int)(cy + sy * 2 - py * 5),
-                     C_ACCENT_DIM);
-
-  s_tft.fillCircle(cx, cy, 4, C_BG);
-  s_tft.drawCircle(cx, cy, 4, C_BORDER);
-
-  // 指針重繪後，把四個方位字母補回來（畫在最上層）
-  navCardinalMarks();
+  switch (dir) {
+    case kLeft:
+      s_tft.drawWideLine(cx + 8, cy + 14, cx + 8, cy + 3, lw, c);
+      s_tft.drawWideLine(cx + 8, cy + 3, cx - 3, cy + 3, lw, c);
+      navArrowHead(cx - 15, cy + 3, -1, 0, 9, c);
+      break;
+    case kRight:
+      s_tft.drawWideLine(cx - 8, cy + 14, cx - 8, cy + 3, lw, c);
+      s_tft.drawWideLine(cx - 8, cy + 3, cx + 3, cy + 3, lw, c);
+      navArrowHead(cx + 15, cy + 3, 1, 0, 9, c);
+      break;
+    case kSlightLeft:
+      s_tft.drawWideLine(cx + 8, cy + 14, cx - 5, cy - 2, lw, c);
+      navArrowHead(cx - 12, cy - 8, -0.78f, -0.62f, 9, c);
+      break;
+    case kSlightRight:
+      s_tft.drawWideLine(cx - 8, cy + 14, cx + 5, cy - 2, lw, c);
+      navArrowHead(cx + 12, cy - 8, 0.78f, -0.62f, 9, c);
+      break;
+    case kSharpLeft:
+      s_tft.drawWideLine(cx + 10, cy + 14, cx + 10, cy - 5, lw, c);
+      s_tft.drawWideLine(cx + 10, cy - 5, cx, cy - 5, lw, c);
+      navArrowHead(cx - 12, cy - 5, -1, 0, 9, c);
+      break;
+    case kSharpRight:
+      s_tft.drawWideLine(cx - 10, cy + 14, cx - 10, cy - 5, lw, c);
+      s_tft.drawWideLine(cx - 10, cy - 5, cx, cy - 5, lw, c);
+      navArrowHead(cx + 12, cy - 5, 1, 0, 9, c);
+      break;
+    case kUp:
+    default:
+      s_tft.drawWideLine(cx, cy + 14, cx, cy - 1, lw, c);
+      navArrowHead(cx, cy - 15, 0, -1, 9, c);
+      break;
+  }
 }
 
-void navBottom() {
+// 頂部：轉彎圖示 + 指示文字 + 距離 + 方位
+void navHudTop() {
   const NavStatus &n = Nav::status();
 
-  s_tft.fillRect(100, 78, SCR_W - 100, FOOTER_Y - 78, C_BG);
+  s_tft.fillRect(0, CONTENT_Y, SCR_W, NAV_TOP_H, C_BG);
+  navTurnIcon(n);
 
-  String d = fmtDist(n.distToNext);
-  s_tft.setTextDatum(MC_DATUM);
-  s_tft.setTextColor(n.arrived ? C_GREEN : C_WHITE, C_BG);
+  Txt::drawWrapped(NAV_ICON_X + NAV_ICON_S + 8, CONTENT_Y + 4, 130, 18,
+                   n.instruction, C_WHITE, 2);
+
+  s_tft.setTextDatum(TR_DATUM);
   s_tft.setTextFont(4);
-  s_tft.drawString(d, 206, 92);
+  s_tft.setTextColor(n.arrived ? C_GREEN : C_WHITE, C_BG);
+  s_tft.drawString(fmtDist(n.distToNext), SCR_W - 8, CONTENT_Y + 2);
+  s_tft.setTextFont(1);
+  s_tft.setTextDatum(TL_DATUM);
 
-  char line[72];
-  snprintf(line, sizeof(line), "剩 %s / %s",
-           fmtDistShort(n.remainingDist).c_str(),
-           fmtDurShort(n.remainingTime).c_str());
-  Txt::drawCenter(206, 110, line, C_MUTED, 204);
+  Txt::drawRight(SCR_W - 8, CONTENT_Y + 32, bearingName(n.bearing), C_MUTED);
+}
 
-  Txt::drawCenter(206, 128, n.destName, C_TEXT, 204);
+// 上緣裁切，避免路線畫進頂部資訊區
+bool navClipTop(int &xa, int &ya, int &xb, int &yb, int ymin) {
+  if (ya < ymin && yb < ymin) return false;
+  if (ya < ymin) {
+    xa = xa + (int)((long)(xb - xa) * (ymin - ya) / (yb - ya));
+    ya = ymin;
+  } else if (yb < ymin) {
+    xb = xb + (int)((long)(xa - xb) * (ymin - yb) / (ya - yb));
+    yb = ymin;
+  }
+  return true;
+}
+
+void navHudPathFallback(const NavStatus &n) {
+  const int cx = SCR_W / 2;
+  const int cy = (NAV_PATH_Y0 + NAV_PATH_Y1) / 2 + 6;
+
+  // 虛線引導
+  for (int y = NAV_PATH_Y0 + 6; y < cy - 24; y += 9) {
+    s_tft.drawFastVLine(cx, y, 4, C_BORDER);
+  }
+
+  float rel = n.bearing - (n.hasHeading ? n.heading : 0.0f);
+  float a   = rel * kDeg;
+  float dx  = sinf(a), dy = -cosf(a);
+
+  s_tft.drawWideLine(cx - (int)(dx * 16), cy - (int)(dy * 16),
+                     cx + (int)(dx * 6), cy + (int)(dy * 6), 8, C_ACCENT);
+  navArrowHead(cx + (int)(dx * 22), cy + (int)(dy * 22), dx, dy, 10, C_ACCENT);
+}
+
+// 路線：以行進方向朝上旋轉，畫出附近路徑與目前位置箭頭
+void navHudPath() {
+  const NavStatus &n = Nav::status();
+  const int y0 = NAV_PATH_Y0, y1 = NAV_PATH_Y1;
+
+  s_tft.fillRect(0, y0, SCR_W, y1 - y0, C_BG);
+
+  const uint16_t count = Nav::routePointCount();
+  const bool hasPos = (n.curLat != 0.0 || n.curLon != 0.0);
+  if (count == 0 || !hasPos) {
+    navHudPathFallback(n);
+    return;
+  }
+
+  const int   ox = SCR_W / 2;
+  const int   oy = y1;
+  const float hdg = n.hasHeading ? n.heading : n.bearing;
+  const float rad = hdg * kDeg;
+  const float sh = sinf(rad), ch = cosf(rad);
+
+  float radius = n.distToNext + 40.0f;
+  if (radius < 80.0f) radius = 80.0f;
+  if (radius > 260.0f) radius = 260.0f;
+  const float scale = (float)(y1 - y0 - 6) / radius;
+
+  const float mPerLat = 111320.0f;
+  float mPerLon = 111320.0f * cosf((float)n.curLat * kDeg);
+  if (mPerLon < 1.0f) mPerLon = 1.0f;
+
+  const double lon0 = n.curLon, lat0 = n.curLat;
+
+  // 找最接近目前位置的路線點
+  uint16_t i0 = 0;
+  float best = 1e18f;
+  for (uint16_t i = 0; i < count; i++) {
+    float lat, lon;
+    Nav::routePoint(i, lat, lon);
+    float dE = (float)((lon - lon0) * mPerLon);
+    float dN = (float)((lat - lat0) * mPerLat);
+    float d  = dE * dE + dN * dN;
+    if (d < best) {
+      best = d;
+      i0 = i;
+    }
+  }
+
+  const uint16_t MAX_SEG = 96;
+  int16_t xs[MAX_SEG + 1];
+  int16_t ys[MAX_SEG + 1];
+  uint16_t np = 0;
+
+  uint16_t start = (i0 > 4) ? (uint16_t)(i0 - 4) : 0;
+  for (uint16_t i = start; i < count && np <= MAX_SEG; i++) {
+    float lat, lon;
+    Nav::routePoint(i, lat, lon);
+
+    float dE  = (float)((lon - lon0) * mPerLon);
+    float dN  = (float)((lat - lat0) * mPerLat);
+    float fwd = dE * sh + dN * ch;
+    float rgt = dE * ch - dN * sh;
+
+    int sx = ox + (int)(rgt * scale);
+    int sy = oy - (int)(fwd * scale);
+
+    if (sy > y1 + 2) continue;    // 已經在目前位置後方
+    if (sy < y0 - 30) break;      // 已經超前方視窗
+
+    xs[np] = (int16_t)sx;
+    ys[np] = (int16_t)sy;
+    np++;
+  }
+
+  // 雙層線條：深色路寬 + 亮色路面（同 HUD 範例）
+  for (int pass = 0; pass < 2; pass++) {
+    const uint16_t color = (pass == 0) ? C_ACCENT_DIM : C_ACCENT;
+    const int      w     = (pass == 0) ? 11 : 6;
+
+    for (uint16_t i = 1; i < np; i++) {
+      int xa = xs[i - 1], ya = ys[i - 1];
+      int xb = xs[i], yb = ys[i];
+      if (!navClipTop(xa, ya, xb, yb, y0 + 1)) continue;
+      s_tft.drawWideLine(xa, ya, xb, yb, w, color);
+    }
+  }
+
+  // 目前位置箭頭（朝向畫面正上方）
+  s_tft.fillTriangle(ox, oy - 16, ox - 8, oy - 1, ox + 8, oy - 1, C_ACCENT);
+  s_tft.drawTriangle(ox, oy - 16, ox - 8, oy - 1, ox + 8, oy - 1, C_WHITE);
+  s_tft.fillCircle(ox, oy - 6, 2, C_BG);
+}
+
+void navHudFooter() {
+  const NavStatus &n = Nav::status();
+
+  char hint[96];
+  if (!n.active) {
+    if (g_app.wifi.apActive) {
+      snprintf(hint, sizeof(hint), "14長按返回   AP %s / %s",
+               g_app.wifi.apSsid.c_str(), AP_PASS);
+    } else {
+      snprintf(hint, sizeof(hint), "14長按:返回");
+    }
+  } else {
+    snprintf(hint, sizeof(hint), "剩 %s %s · %u/%u · 14:返回",
+             fmtDistShort(n.remainingDist).c_str(),
+             fmtDurShort(n.remainingTime).c_str(),
+             (unsigned)n.stepIndex + 1, (unsigned)n.stepCount);
+  }
+  drawFooter(hint);
 }
 
 void navEmpty() {
@@ -795,24 +961,11 @@ void drawNavFull() {
   if (!n.active) {
     navEmpty();
   } else {
-    navInstructionArea();
-    navDialFrame();
-    navDialNeedle();
-    navBottom();
+    navHudTop();
+    navHudPath();
   }
 
-  char hint[72];
-  if (!n.active && g_app.wifi.apActive) {
-    snprintf(hint, sizeof(hint), "14長按返回   AP %s / %s",
-             g_app.wifi.apSsid.c_str(), AP_PASS);
-  } else if (n.active) {
-    snprintf(hint, sizeof(hint), "步驟 %u/%u   %s %.0f°   14長按返回",
-             (unsigned)n.stepIndex + 1, (unsigned)n.stepCount,
-             bearingName(n.bearing), (double)n.bearing);
-  } else {
-    snprintf(hint, sizeof(hint), "14長按:返回");
-  }
-  drawFooter(hint);
+  navHudFooter();
 
   s_navActive = n.active;
   s_navSteps  = n.stepCount;
@@ -835,9 +988,9 @@ void updateNav() {
   if (n.rev == s_navRev) return;
 
   s_navRev = n.rev;
-  navInstructionArea();
-  navDialNeedle();
-  navBottom();
+  navHudTop();
+  navHudPath();
+  navHudFooter();
 }
 
 // ---------------------------------------------------------------------------
